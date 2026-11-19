@@ -79,7 +79,12 @@ export function createGame(human, bodies = [], mode = "time", heads = [], pnames
   const pills = [], npill = () => ({ x: rnd(WD - 600), y: rnd(WD - 600), gone: false, back: 0 });   // pílulas Tadala
   for (let i = 0; i < PILLS; i++) pills.push(npill());
   // cards flutuantes: t = 0 diminui até o tamanho inicial (imagem 1), t = 1 cresce 50% (imagem 2); CARDS_POR_TIPO de cada no mapa
-  const ncard = (t, id) => ({ x: rnd(WD - 600), y: rnd(WD - 600), t, id, gone: false, back: 0 });
+  // posição dos cards: das 14 candidatas sorteadas fica a mais distante dos outros cards (assim não aparecem juntos e se espalham pelo mapa todo)
+  const ncard = (t, id) => {
+    let bx = 0, by = 0, bd = -1;
+    for (let q = 0; q < 14; q++) { const x = rnd(WD - 600), y = rnd(WD - 600); let md = 1e18; for (const o of cards) if (!o.gone && o.id !== id) md = Math.min(md, (o.x - x) ** 2 + (o.y - y) ** 2); if (md > bd) { bd = md; bx = x; by = y; } }
+    return { x: bx, y: by, t, id, gone: false, back: 0 };
+  };
   const cards = []; for (let t = 0; t < 2; t++) for (let k = 0; k < CARDS_POR_TIPO; k++) cards.push(ncard(t, cards.length));
   let el = 0, ag = 0, evT = 20 + Math.random() * 30, fph = 30, ftg = 1800, cl = 12, dc = 0, mev = 70 + Math.random() * 40, rain = 0, rp = [], ices = [];   // mev = tempo até a próxima chuva de sorvete; rain = segundos restantes; rp = os 2 pontos do mapa onde ela cai; ices = sorvetes no chão (somem depois de um tempo)
   const G = { sn, sk: sn.map(s => s.sk), hd: HD, names: sn.map(s => s.nm), over: false, dead: [], eats: [], pk: [], pop: [], hits: [], pp: [], cp: [] };
@@ -210,7 +215,11 @@ export function createGame(human, bodies = [], mode = "time", heads = [], pnames
     if (ag > 0) { ag -= sec; if (ag <= 0) { ag = 0; evT = 30 + Math.random() * 60; } } else { evT -= sec; if (evT <= 0) ag = 15; }
     // chuva de sorvete: de tempos em tempos (1m30 a 2m40), por 10 s, cai sorvete em 2 pontos aleatórios do mapa ao mesmo tempo (sem aviso)
     mev -= sec;
-    if (mev <= 0) { mev = 90 + Math.random() * 70; const lim = WD / 2 - 700; rain = 10; rp = [[rnd(lim * 2), rnd(lim * 2)], [rnd(lim * 2), rnd(lim * 2)]]; }
+    if (mev <= 0) { mev = 90 + Math.random() * 70; const lim = WD / 2 - 450; rain = 10;
+      const p1 = [rnd(lim * 2), rnd(lim * 2)]; let p2 = p1, dm = -1;   // o 2º ponto fica bem longe do 1º (metade do mapa ou mais; senão usa o mais distante de 20 tentativas)
+      for (let q = 0; q < 20; q++) { const c = [rnd(lim * 2), rnd(lim * 2)], d = Math.hypot(c[0] - p1[0], c[1] - p1[1]); if (d > dm) { dm = d; p2 = c; } if (d >= WD * .55) break; }
+      rp = [p1, p2];
+    }
     if (rain > 0) {
       rain -= sec;
       for (const [px, py] of rp) for (let q = 0; q < 2; q++) { const a = Math.random() * 6.283, d = Math.random() * 380; ices.push(add({ x: px + Math.cos(a) * d, y: py + Math.sin(a) * d, v: 2 + (Math.random() * 2 | 0), e: 5, t: el })); }
@@ -281,7 +290,7 @@ export function createGame(human, bodies = [], mode = "time", heads = [], pnames
       const end = Math.min(e, last + 3), pts = []; for (let k = 0; k <= end; k += 3) pts.push(sg[k].x | 0, sg[k].y | 0);
       ns.push([s.i, Math.round(s.cm * 10), +s.a.toFixed(2), pts, s.hp, s.inv > 0 ? s.inv * 100 | 0 : 0, e / 3 + 1, s.stf > 0 ? 1 : 0]);
     }
-    const f = []; near(cx, cy, B, c => { for (const o of c) if (Math.abs(o.x - cx) < B && Math.abs(o.y - cy) < B) f.push(o.x | 0, o.y | 0, o.d ? 4 : o.e); });
+    const f = []; near(cx, cy, B, c => { for (const o of c) if (Math.abs(o.x - cx) < B && Math.abs(o.y - cy) < B) f.push(o.x | 0, o.y | 0, o.d ? 4 : o.e === 5 && el - o.t < 1 ? 6 : o.e); });   // 6 = sorvete recém-criado (o navegador o desenha caindo do céu)
     return { t: "s", x: cx | 0, y: cy | 0, al: p.alive ? 1 : 0, sp, hd: humanAlive(), ns, f, m: sn.slice(0, NSEL).filter(s => s.alive).map(s => [s.i, s.x | 0, s.y | 0]),
       ea: G.eats.filter(e => Math.abs(e[0] - cx) < B && Math.abs(e[1] - cy) < B), dx: G.dead.filter(e => Math.abs(e[0] - cx) < B && Math.abs(e[1] - cy) < B),
       lf: TM ? -1 : p.lives, hp: p.hp, ht: G.hits.filter(h => h[0] === i).map(h => [h[2], h[3], h[1]]), pop: G.pop.filter(e => Math.abs(e[0] - cx) < B && Math.abs(e[1] - cy) < B), pw: pw.filter(w => !w.gone && Math.abs(w.x - cx) < B + 100 && Math.abs(w.y - cy) < B + 100).map(w => [w.x | 0, w.y | 0]), pl: pills.filter(w => !w.gone && Math.abs(w.x - cx) < B + 100 && Math.abs(w.y - cy) < B + 100).map(w => [w.x | 0, w.y | 0]), pp: G.pp.filter(e => Math.abs(e[0] - cx) < B && Math.abs(e[1] - cy) < B), pk: G.pk.filter(e => Math.abs(e[0] - cx) < B && Math.abs(e[1] - cy) < B), cd: cards.filter(w => !w.gone && Math.abs(w.x - cx) < B + 100 && Math.abs(w.y - cy) < B + 100).map(w => [w.x | 0, w.y | 0, w.t, w.id]), cp: G.cp.filter(e => Math.abs(e[0] - cx) < B && Math.abs(e[1] - cy) < B), ag: ag > 0 ? 1 : 0, tl: TM ? Math.max(0, TIME - el) | 0 : -1, n: sn.filter(s => s.alive).length };

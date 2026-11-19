@@ -38,6 +38,7 @@ function boom(x, y, i) {
   if (i === ST.you) ST.shake = Math.max(ST.shake, 22);
   else if (me && Math.hypot(me.cur[0] - x, me.cur[1] - y) < 400) ST.shake = Math.max(ST.shake, 9);
 }
+const FALL = new Map();   // sorvetes caindo: posição -> instante em que apareceram
 const EMO = [];   // cada emoji da comida vira um sprite 1 vez (fillText de emoji com escala nova a cada quadro re-rasteriza a fonte colorida = lento)
 const emo = k => EMO[k] || (EMO[k] = (() => { const c = document.createElement("canvas"); c.width = c.height = 80; const t = c.getContext("2d"); t.font = "60px sans-serif"; t.textAlign = "center"; t.textBaseline = "middle"; t.fillText(FE[k], 40, 42); return c; })());
 const R = c => 10 + Math.min(c, 30) * 1.5 + Math.max(0, c - 30) * .3;
@@ -168,6 +169,14 @@ export function runGame(cv, { hud, sc, dd, fin, tail, bn, vg, send }) {
       const x = f[k], y = f[k + 1]; if (Math.abs(x - cx) > hw || Math.abs(y - cy) > hh) continue;
       const pl = 1 + .15 * Math.sin(ft + x * .013 + y * .017);   // cada comida pulsa em um ritmo defasado
       if (f[k + 2] === 4) { g.fillStyle = "#39ff1455"; C(g, x, y, 24 * pl); g.fillStyle = "#39ff14"; C(g, x, y, 15 * pl); g.fillStyle = "#eaffe0"; C(g, x - 5 * pl, y - 5 * pl, 5 * pl); }
+      else if (f[k + 2] === 6) {   // sorvete caindo do céu: cai acelerando (~0,9 s) com sombra crescendo no chão e um respingo ao pousar
+        const key = x * 20011 + y; let t0 = FALL.get(key); if (t0 == null) { if (FALL.size > 400) FALL.clear(); FALL.set(key, t0 = performance.now()); }
+        const u = Math.min(1, (performance.now() - t0) / 900), oy = -720 * (1 - u * u);
+        g.fillStyle = "rgba(0,0,0," + (.08 + .22 * u).toFixed(2) + ")"; g.beginPath(); g.ellipse(x, y + 12, 8 + 16 * u, 3 + 6 * u, 0, 0, 6.2832); g.fill();
+        if (u > .2 && u < 1) { g.strokeStyle = "rgba(255,255,255,.28)"; g.lineWidth = 2; g.beginPath(); g.moveTo(x, y + oy - 70 * (1 - u)); g.lineTo(x, y + oy - 20); g.stroke(); }   // rastro de queda
+        const sz = 48 * (.7 + .3 * u); g.globalAlpha = Math.min(1, .3 + u * 1.2); g.drawImage(emo(5), x - sz / 2, y + oy - sz / 2, sz, sz); g.globalAlpha = 1;
+        if (u >= 1 && !FALL.get("d" + key)) { FALL.set("d" + key, 1); spark(x, y, "#fde68a", 5, 2.2, 18); }
+      }
       else { g.fillStyle = "rgba(255,255,255,.14)"; C(g, x, y, 22 * pl); const sz = 48 * pl; g.drawImage(emo(f[k + 2]), x - sz / 2, y - sz / 2, sz, sz); }
     }
     for (let k = 0; k < ST.pw.length; k++) { const q = ST.pw[k]; if (Math.abs(q[0] - cx) < hw + 80 && Math.abs(q[1] - cy) < hh + 80) condomIcon(g, q[0], q[1], 110, performance.now()); }
