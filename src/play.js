@@ -94,10 +94,6 @@ export function banner(h, col, ms = 3200) {
 }
 // aviso "fulano entrou/saiu da partida" (mesmo estilo do aviso de batida no rabo)
 export function onEvent(m) {
-  if (m.k === "rain") return banner("🌧️ Chuva de comida!<br><small>Corra para pegar!</small>", "#7dd3fc");
-  if (m.k === "rage") return banner("😡 Os bots ficaram furiosos!", "#f87171");
-  if (m.k === "boss") { ST.names[m.i] = m.nm; return banner("👑 " + esc(m.nm.replace(/^👑 /, "")) + " virou GIGANTE!<br><small>Derrube-o e leve a comida!</small>", "#fbbf24", 4200); }
-  if (m.k === "bossdead") { ST.names[m.i] = m.nm; return banner("💥 " + esc(m.nm) + " caiu!", "#4ade80"); }
   if (m.sk != null) ST.sk[m.i] = m.sk;
   if (m.h != null) { ST.heads[m.i] = m.h; ST.names[m.i] = m.nm || ST.names[m.i]; }   // quem entrou traz a cabeça e o nome que escolheu
   if (m.k === "hd") return;   // troca silenciosa de cabeça/nome de um bot
@@ -106,8 +102,8 @@ export function onEvent(m) {
 
 const RABO_SND_MAX_CM = 35, ALERT_BIG_CM = 120, ALERT_GAP = 8000;   // som do rabo só até 35 cm; acima de 120 cm os alertas visuais têm intervalo de 8 s
 
-export function runGame(cv, { hud, sc, dd, fin, tail, bn, send }) {
-  bnEl = bn;
+export function runGame(cv, { hud, sc, dd, fin, tail, bn, vg, send }) {
+  bnEl = bn; let lastVg = "";
   const g = cv.getContext("2d", { alpha: false });   // canvas opaco: o navegador não precisa compor transparência (mais leve no PC)
   let TILE = null, TILE_K = null, VW, VH, raf, fr = 0, lv = -1, lt = performance.now(), ainit = false; const cam = { x: ST.x, y: ST.y }; let zk = 1;
   const mob = matchMedia("(pointer:coarse)").matches; let sal = 0;   // celular/tablet: interface menor, zoom mais aberto, tela sempre ligada
@@ -252,6 +248,9 @@ export function runGame(cv, { hud, sc, dd, fin, tail, bn, send }) {
       // avisos de tensão: reta final no modo por tempo; última vida e duelo final no modo eliminação (cada um aparece uma vez por partida)
       if (tl >= 0) for (const t of [60, 30, 10]) if (tl <= t && tl > t - 6 && !ST.fl[t]) { ST.fl[t] = 1; banner(t === 60 ? "⏳ Falta 1 minuto!" : t === 30 ? "⏳ 30 segundos!" : "🔥 Últimos 10 segundos!", t === 10 ? "#f87171" : "#fbbf24", t === 10 ? 3000 : 2600); }
       if (ST.lf === 0 && ST.al && !ST.fl.last) { ST.fl.last = 1; banner("💔 Última vida!", "#f87171"); }
+      // bordas vermelhas piscando nos 4 cantos: últimos 60 s (mais rápido nos últimos 10), última vida ou duelo final
+      const lvl = tl >= 0 ? (tl <= 10 ? 2 : tl <= 60 ? 1 : 0) : (ST.al && (ST.lf === 0 || (ST.md === "elim" && ST.hd === 2 && ST.hm > 2))) ? 1 : 0, vc = lvl ? "on l" + lvl : "";
+      if (vc !== lastVg) { lastVg = vc; vg.className = vc; }
       if (ST.md === "elim") { ST.hm = Math.max(ST.hm, ST.hd || 0); if (ST.hd === 2 && ST.hm > 2 && !ST.fl.duel) { ST.fl.duel = 1; banner("⚔️ Só restam 2 jogadores vivos!", "#fbbf24"); } }
       const it = (ic, v) => `<span class="it"><i>${ic}</i>${v}</span>`;   // cada indicador num bloco com espaço entre o ícone e o valor
       const sh = (ST.lf >= 0 ? `<span class="hr">${Array.from({ length: LIVES }, (_, k) => `<span>${k < ST.lf ? "♥" : "♡"}</span>`).join("")}</span>` : "") + it("📏", ST.lastC.toFixed(1) + " cm") + it("🐍", ST.n) + (tl >= 0 ? it("⏱", String(tl / 60 | 0).padStart(2, "0") + ":" + String(tl % 60).padStart(2, "0")) : "") + it("👥", ST.on || 1);   // por tempo: sem corações; eliminação: sem relógio

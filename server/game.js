@@ -4,7 +4,6 @@ const BIG_FROM = 100, BIG_FULL = 200, BIG_BONUS = .5;   // aceleração das cobr
 export function createGame(human, bodies = [], mode = "time", heads = [], pnames = []) {
   const TM = mode === "time";   // "time": 10 min, renasce sem limite (bots também), vale o tamanho no fim | "elim": sem tempo, 3 vidas, bots não renascem, vence o último humano vivo
   let elimN = 0;   // quantos humanos já foram eliminados de vez (modo elim)
-  const BOSS_CM = 150;   // tamanho (cm) do bot gigante
   const rnd = n => (Math.random() - .5) * n;
   const R = s => 10 + Math.min(s.cm, 30) * 1.5 + Math.max(0, s.cm - 30) * .3;
   const L = s => Math.max(8, 14 + (s.cm * 10 | 0));
@@ -82,11 +81,10 @@ export function createGame(human, bodies = [], mode = "time", heads = [], pnames
   // cards flutuantes: t = 0 diminui até o tamanho inicial (imagem 1), t = 1 cresce 50% (imagem 2); CARDS_POR_TIPO de cada no mapa
   const ncard = (t, id) => ({ x: rnd(WD - 600), y: rnd(WD - 600), t, id, gone: false, back: 0 });
   const cards = []; for (let t = 0; t < 2; t++) for (let k = 0; k < CARDS_POR_TIPO; k++) cards.push(ncard(t, cards.length));
-  let el = 0, ag = 0, evT = 20 + Math.random() * 30, fph = 30, ftg = 1800, cl = 12, dc = 0, mev = 70 + Math.random() * 40, rain = 0, boss = null;   // mev = tempo até o próximo mini-evento; rain = segundos restantes da chuva de comida; boss = bot gigante atual
-  const G = { sn, sk: sn.map(s => s.sk), hd: HD, names: sn.map(s => s.nm), over: false, ev: [], dead: [], eats: [], pk: [], pop: [], hits: [], pp: [], cp: [] };
+  let el = 0, ag = 0, evT = 20 + Math.random() * 30, fph = 30, ftg = 1800, cl = 12, dc = 0, mev = 70 + Math.random() * 40, rain = 0, rp = [], ices = [];   // mev = tempo até a próxima chuva de sorvete; rain = segundos restantes; rp = os 2 pontos do mapa onde ela cai; ices = sorvetes no chão (somem depois de um tempo)
+  const G = { sn, sk: sn.map(s => s.sk), hd: HD, names: sn.map(s => s.nm), over: false, dead: [], eats: [], pk: [], pop: [], hits: [], pp: [], cp: [] };
 
   const die = s => {
-    if (s === boss) { boss = null; s.nm = G.names[s.i] = s.nm0; G.ev.push({ k: "bossdead", i: s.i, nm: s.nm }); }   // bot gigante derrotado: volta ao nome normal
     s.alive = false; G.dead.push([s.x | 0, s.y | 0, s.i]); s.fin = s.cm; s.best = Math.max(s.best, s.cm); s.hp = 0; s.gr = 0; s.ex = 0; s.inv = 0; s.stf = 0; s.fx = null; s.dd = dc++; s.lx = s.x; s.ly = s.y;
     // bolinhas verdes: no máximo MAX_DROPS por morte; o valor total é o mesmo de antes (cada bolinha vale mais quando a cobra era gigante)
     { const tot = Math.ceil(L(s) / 3), cnt = Math.min(tot, MAX_DROPS), vv = DROP_V * tot / cnt, sgd = s.segs, md = sgd.length;
@@ -102,7 +100,7 @@ export function createGame(human, bodies = [], mode = "time", heads = [], pnames
   };
 
   G.step = dt => {
-    G.ev = []; G.dead = []; G.eats = []; G.pk = []; G.pop = []; G.hits = []; G.pp = []; G.cp = [];
+    G.dead = []; G.eats = []; G.pk = []; G.pop = []; G.hits = []; G.pp = []; G.cp = [];
     for (const w of cards) if (w.gone && el >= w.back) Object.assign(w, ncard(w.t, w.id));
     for (const w of pills) if (w.gone && el >= w.back) Object.assign(w, npill());
     for (const f of drops) if (!f.gone && el + 1 - f.d > 60) { const c = grid.get(key(f.x, f.y)); if (c) { const j = c.indexOf(f); if (j >= 0) c.splice(j, 1); } nfood--; f.gone = true; }
@@ -189,7 +187,7 @@ export function createGame(human, bodies = [], mode = "time", heads = [], pnames
         const q = (r + rmax) * .8, st = ++stamp, ax0 = gc(s.x - q), ax1 = gc(s.x + q), ay0 = gc(s.y - q), ay1 = gc(s.y + q);
         col: for (let a = ax0; a <= ax1; a++) for (let b = ay0; b <= ay1; b++) for (let e = gHead[a * GN + b]; e >= 0; e = gNext[e]) {
           const v = gVal[e], o = sn[v & 63], k = v >> 6;
-          if (o === s || !o.alive || o.inv > 0 || o.mk === st || (s === boss && o.bot)) continue;   // o bot gigante atravessa o corpo de outros bots: só morre ao encostar no corpo de um jogador
+          if (o === s || !o.alive || o.inv > 0 || o.mk === st) continue;
           const sgo = o.segs; if (k >= sgo.length) continue;
           const qq = sgo[k], lk = (r + o.rr * TAPER(k / 3, o.nn)) * .8;
           if (Math.abs(qq.x - s.x) < lk && Math.abs(qq.y - s.y) < lk && Math.hypot(qq.x - s.x, qq.y - s.y) < lk) {
@@ -209,27 +207,20 @@ export function createGame(human, bodies = [], mode = "time", heads = [], pnames
       s.bx0 = x0; s.bx1 = x1; s.by0 = y0; s.by1 = y1;
     }
     const sec = dt / 60; el += sec;
-    if (ag > 0) { ag -= sec; if (ag <= 0) { ag = 0; evT = 30 + Math.random() * 60; } } else { evT -= sec; if (evT <= 0) { ag = 15; G.ev.push({ k: "rage" }); } }   // bots furiosos (já existia): agora todo mundo é avisado
-    // mini-eventos: de tempos em tempos (1m30 a 2m40) acontece algo diferente e todo mundo é avisado
+    if (ag > 0) { ag -= sec; if (ag <= 0) { ag = 0; evT = 30 + Math.random() * 60; } } else { evT -= sec; if (evT <= 0) ag = 15; }
+    // chuva de sorvete: de tempos em tempos (1m30 a 2m40), por 10 s, cai sorvete em 2 pontos aleatórios do mapa ao mesmo tempo (sem aviso)
     mev -= sec;
-    if (mev <= 0) {
-      mev = 90 + Math.random() * 70;
-      const hs = sn.filter(x => !x.bot && x.alive), bs = sn.filter(x => x.bot && x.alive);
-      if (hs.length) {
-        if (!boss && bs.length && Math.random() < .5) {   // bot gigante: vale muito quando é derrotado (as bolinhas dele são proporcionais ao tamanho)
-          boss = bs[Math.random() * bs.length | 0]; boss.nm0 = boss.nm; boss.cm = Math.max(boss.cm, BOSS_CM); boss.nm = G.names[boss.i] = "👑 " + boss.nm0;
-          G.ev.push({ k: "boss", i: boss.i, nm: boss.nm });
-        } else { rain = 10; G.ev.push({ k: "rain" }); }   // chuva de comida: 10 s de comida caindo perto dos jogadores
-      }
-    }
+    if (mev <= 0) { mev = 90 + Math.random() * 70; const lim = WD / 2 - 700; rain = 10; rp = [[rnd(lim * 2), rnd(lim * 2)], [rnd(lim * 2), rnd(lim * 2)]]; }
     if (rain > 0) {
-      rain -= sec; const hs = sn.filter(x => !x.bot && x.alive), lim = WD / 2 - 120;
-      if (hs.length) for (let q = 0; q < 3; q++) { const h = hs[Math.random() * hs.length | 0], a = Math.random() * 6.283, d = 200 + Math.random() * 1100; add({ x: Math.max(-lim, Math.min(lim, h.x + Math.cos(a) * d)), y: Math.max(-lim, Math.min(lim, h.y + Math.sin(a) * d)), v: 2 + (Math.random() * 2 | 0), e: Math.random() * 4 | 0 }); }
+      rain -= sec;
+      for (const [px, py] of rp) for (let q = 0; q < 2; q++) { const a = Math.random() * 6.283, d = Math.random() * 380; ices.push(add({ x: px + Math.cos(a) * d, y: py + Math.sin(a) * d, v: 2 + (Math.random() * 2 | 0), e: 5, t: el })); }
     }
+    for (const f of ices) if (!f.gone && el - f.t > 45) { const c = grid.get(key(f.x, f.y)); if (c) { const j = c.indexOf(f); if (j >= 0) c.splice(j, 1); } nfood--; f.gone = true; }
+    if (ices.length && ices[0].gone) ices = ices.filter(f => !f.gone);
     fph -= sec; if (fph <= 0) { fph = 25 + Math.random() * 30; ftg = [800, 1800, 3500][Math.random() * 3 | 0]; }
     cl -= sec; if (cl <= 0) { cl = 20 + Math.random() * 25; const hx = rnd(WD - 600), hy = rnd(WD - 600); for (let i = 0; i < 90; i++) { const a = Math.random() * 6.28, d = Math.random() * 320; add({ x: hx + Math.cos(a) * d, y: hy + Math.sin(a) * d, v: 1 + (Math.random() * 2 | 0), e: Math.random() * 4 | 0 }); } }
     for (let q = 0; q < 10 && nfood < ftg; q++) add(nf());
-    if (nfood > ftg + 150) for (let q = 0; q < 8; q++) { const c = grid.get(key(rnd(WD - 100), rnd(WD - 100))); if (c && c.length && !c[0].d) { c[0].gone = true; c.shift(); nfood--; } }
+    if (nfood > ftg + 150) for (let q = 0; q < 8; q++) { const c = grid.get(key(rnd(WD - 100), rnd(WD - 100))); if (c && c.length && !c[0].d && c[0].e !== 5) { c[0].gone = true; c.shift(); nfood--; } }
     const al = sn.filter(s => s.alive);
     G.over = force || (TM ? el >= TIME : (humanAlive() === 0 || (humanAlive() === 1 && elimN >= 1)));   // elim: acaba quando sobra só 1 humano vivo (ou nenhum)
   };
@@ -240,7 +231,6 @@ export function createGame(human, bodies = [], mode = "time", heads = [], pnames
   // entrada no meio da partida: assume a cobra da vaga (viva = continua; morta = renasce pequena piscando)
   G.join = (i, body, head, name) => {
     const s = sn[i]; if (!s) return;
-    if (s === boss) boss = null;
     s.sk = body; G.sk[i] = body; if (head != null) { G.hd[i] = head; s.nm = G.names[i] = name || HEAD_NAMES[head]; } s.bot = false; s.lives = TM ? 0 : LIVES; s.inp = { a: s.a, b: false, k: false };
     if (!s.alive) respawn(s);
     // quem entrou no meio da partida não pode ficar igual a um bot: bots com a mesma cabeça ou o mesmo nome ganham outra(o)

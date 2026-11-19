@@ -1,5 +1,5 @@
 import { CONDOM_HITS, TAPER } from "../shared/config.js";
-const FE=["🧆","🥤","🍔","🍫"];
+const FE=["🧆","🥤","🍔","🍫","","🍦"];   // posição 4 = bolinha verde (desenhada por código); 5 = sorvete da chuva
 const XN=["Jiboia","Naja","Sucuri","Cascavel","Jararaca","Coral","Anaconda","Mamba"];
 const esc=s=>s.replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const C=(g,x,y,r)=>{g.beginPath();g.arc(x,y,r,0,6.2832);g.fill()};

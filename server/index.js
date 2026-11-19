@@ -63,7 +63,6 @@ function start() {
   let next = performance.now() + TICK;
   const tick = () => {
     G.step(TICK / 16.667); tk++;
-    for (const e of G.ev) notify(null, { t: "ev", ...e });   // mini-eventos (chuva de comida, bot gigante, bots furiosos)
     for (const d of G.dead) { const w = slots[d[2]]; if (w && inGame.has(w)) notify(null, { t: "ev", k: "die", i: d[2] }); }   // jogador humano morreu: aviso "broxou!" para todos na partida (bots não geram aviso)
     const on = online().length;
     slots.forEach((w, i) => { if (!w || !inGame.has(w) || w.readyState !== 1) return; send(w, { ...G.snap(i), on, k: tk }); if (tk % 12 === 1) send(w, { t: "l", l: G.lb() }); });

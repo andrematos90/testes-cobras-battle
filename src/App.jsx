@@ -150,9 +150,9 @@ function Lobby({ lob, send, muted, setMuted, notice, clearNotice }) {
 }
 
 function Game({ send, muted, setMuted }) {
-  const cv = useRef(), hud = useRef(), sc = useRef(), dd = useRef(), fin = useRef(), tail = useRef(), bn = useRef(), [conf, setConf] = useState(false);
+  const cv = useRef(), hud = useRef(), sc = useRef(), dd = useRef(), fin = useRef(), tail = useRef(), bn = useRef(), vg = useRef(), [conf, setConf] = useState(false);
   useEffect(() => { if (!conf) return; const t = setTimeout(() => setConf(false), 3000); return () => clearTimeout(t); }, [conf]);   // "Sair" pede um segundo toque para confirmar
-  useEffect(() => runGame(cv.current, { hud: hud.current, sc: sc.current, dd: dd.current, fin: fin.current, tail: tail.current, bn: bn.current, send }), []);
+  useEffect(() => runGame(cv.current, { hud: hud.current, sc: sc.current, dd: dd.current, fin: fin.current, tail: tail.current, bn: bn.current, vg: vg.current, send }), []);
   return (
     <div style={{ touchAction: "none" }}>
       <canvas ref={cv} style={{ touchAction: "none" }} />
@@ -160,6 +160,7 @@ function Game({ send, muted, setMuted }) {
       <div id="dd" ref={dd}>Você morreu 💀 e não tem mais vidas<br />aguardando o fim da partida...</div>
       <button id="fin" ref={fin} className="btn" onClick={() => send({ t: "fin" })}>Finalizar partida</button>
       <div id="tail" ref={tail} />
+      <div id="vg" ref={vg} />
       <div id="bn" ref={bn} />
       <div id="hud" ref={hud} />
       <div id="mt" onClick={() => setMuted(toggleMute())}>{muted ? "🔇" : "🔊"}</div>
