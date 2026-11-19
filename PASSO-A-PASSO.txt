@@ -1,0 +1,69 @@
+COBRAS.IO ONLINE - COMO COLOCAR NO AR (Render, plano gratis)
+=============================================================
+
+ANTES DE TUDO (na pasta "public")
+  - Coloque as 15 fotos das cabecas (PNG) com estes nomes:
+      cobra1.png  cobra2.png  ...  cobra15.png
+    Se faltar alguma, a cobra usa a cabeca padrao com olhos.
+  - Coloque a trilha sonora com o nome:  musica.mp3   (de preferencia pequena, ate uns 5 MB)
+  - Nomes das 15 cabecas: edite o arquivo shared/config.js (lista HEAD_NAMES, mesma ordem das fotos).
+
+TESTAR NO SEU COMPUTADOR (opcional, precisa do Node.js 18+ de nodejs.org)
+  npm install
+  npm run build
+  npm start
+  Abra http://localhost:3000 em duas abas para simular dois jogadores.
+
+1) COLOCAR NO GITHUB
+  - Crie conta em github.com -> botao "New repository" -> nome "cobras-online" -> Create.
+  - Na pagina do repositorio clique em "uploading an existing file" e arraste TODO o conteudo
+    desta pasta (NAO envie as pastas node_modules e dist, se existirem). Clique em "Commit changes".
+
+2) CRIAR O SERVIDOR NO RENDER
+  - Entre em render.com e crie conta (pode usar "Sign in with GitHub").
+  - Clique em "New +" -> "Web Service" -> escolha o repositorio "cobras-online".
+  - Preencha:
+      Language / Runtime ..... Node
+      Build Command .......... npm install && npm run build
+      Start Command .......... npm start
+      Instance Type .......... Free
+  - Clique em "Create Web Service" e espere o deploy (alguns minutos).
+  - Quando aparecer "Live", o endereco fica no topo: https://cobras-online-xxxx.onrender.com
+
+3) JOGAR
+  - Mande o endereco para os amigos (ate 6 jogadores). Cada um escolhe uma cobra diferente e clica PRONTO.
+  - A partida so comeca quando TODOS que estao online no link escolherem uma cobra e clicarem PRONTO. As cobras nao escolhidas viram bots.
+  - Quando uma das 6 cobras selecionaveis morre, ela renasce pequena na hora e continua jogando.
+  - A partida dura no maximo 10 minutos. Ao terminar, aparece o Ranking final e a partida so volta ao lobby quando alguem clicar em "Reiniciar partida".
+
+OBSERVACOES DO PLANO GRATIS
+  - Depois de 15 minutos sem ninguem usando, o servidor "dorme". O primeiro a abrir espera cerca de 1 minuto.
+  - O Render pode reiniciar o servico a qualquer momento (se acontecer no meio da partida, ela cai).
+  - Para atualizar o jogo: troque os arquivos no GitHub (Add file -> Upload files). O Render publica sozinho.
+
+AJUSTES RAPIDOS (shared/config.js)
+  NS = 50 total de cobras (6 selecionaveis + bots) | TICK = 40 (maior = servidor mais leve, jogo menos suave)
+  TIME = 600 duracao em segundos
+
+NOVIDADES
+  - Coloque o som do aviso "bateu no seu rabo" em public/rabo.mp3 (se nao existir, toca um alerta sintetico).
+  - Contagem de 5 segundos quando todos os online clicam em PRONTO (COUNTDOWN em shared/config.js).
+  - Quem entra no link com a partida ja rolando escolhe uma cobra livre e clica em ENTRAR NA PARTIDA. Botao "Sair" (2 toques) volta ao lobby.
+  - Avisos "fulano entrou/saiu da partida" aparecem na tela de todos.
+  - Ao renascer a cobra pisca 3 vezes sem poder morrer (INV_TIME). Camisinha: 1 toque protege, o 2o rasga (CONDOM_HITS).
+  - Pilula Tadala (PILLS, PILL_STIFF, PILL_MAX_CM, PILL_BACK): cobra ate 8 cm fica reta e sem controle por 4 s.
+  - Nomes dos bots: BOT_NAMES e BOT_NAMES2 em shared/config.js; cada partida sorteia uma das listas.
+
+
+--- CARDS FLUTUANTES ---
+Coloque as 2 imagens na pasta public: card1.png (card que DIMINUI a cobra) e card2.png (card que FAZ CRESCER 70%, acelerando).
+Sem a imagem, o jogo mostra um card colorido com o número. Existem 3 cards de cada tipo no mapa (6 no total).
+Ajustes (quantidade, tempos, tamanho do efeito) estão no fim de shared/config.js.
+
+
+--- LOBBY: RETANGULOS, CABECA, CORPO E NOME ---
+  - Sao 6 retangulos (NSEL), cada um com uma cor. Quem clica num retangulo livre fica com ele (o seu fica com borda grossa, brilho e seta ▼); os ocupados ficam com cadeado e ninguem mais consegue pegar.
+  - No seu retangulo: setas de cima = cabeca, setas de baixo = corpo, e uma caixa para digitar o nome (vazio = usa o nome da cabeca).
+    No teclado: ← → trocam o corpo, ↑ ↓ trocam a cabeca.
+  - HEAD_UNIQUE (shared/config.js): true = duas pessoas nao usam a mesma cabeca ao mesmo tempo. NAME_MAX = maximo de letras do nome.
+  - Cores dos retangulos: SLOT_COLORS em shared/config.js.
