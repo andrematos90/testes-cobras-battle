@@ -192,8 +192,9 @@ export const BODY_MAX = 12000;  // comprimento máximo do corpo (px). Cobra gran
 // --- cards flutuantes (5 tipos, 1 de cada no mapa; só jogadores pegam) ---
 export const CARDS_POR_TIPO = 3;     // quantos cards de cada tipo (diminui / cresce) existem no mapa
 export const CARD_BACK = 20;         // segundos para o card reaparecer em outro lugar depois de pego
-export const CARD_START_CM = .1;     // tamanho com que a cobra começa o jogo (card 1 encolhe até aqui)
-export const CARD_SHRINK_SECS = 8;   // card 1: tempo para voltar ao tamanho inicial (qualquer tamanho: cobra maior encolhe mais rápido, sempre de forma suave)
+export const CARD_START_CM = .1;     // tamanho mínimo que a cobra pode ter por causa do card 1
+export const CARD_SHRINK_TO = .4;    // card 1: a cobra encolhe para 40% do tamanho que tinha ao pegar o card
+export const CARD_SHRINK_SECS = 8;   // card 1: tempo para encolher (qualquer tamanho; sempre de forma suave)
 export const CARD_GROW_TIERS = [[20, 3], [100, 2], [Infinity, 1.3]];   // card 2: [até X cm, multiplicador]. Até 20 cm = x3 (20 vira 60); acima de 20 até 100 = x2 (dobra); acima de 100 = x1.3 (+30%)
 export const CARD_GROW_SECS = 5;     // card 2: tempo total do crescimento (igual para qualquer tamanho)
 export const CARD_GROW_ACCEL = 2;    // card 2: 1 = crescimento constante; 2 = vai acelerando (começa devagar e termina rápido); 3 = acelera ainda mais
@@ -211,3 +212,9 @@ const VIEW_FRAC = cm => cm <= VIEW_FULL_CM ? 1 : Math.max(VIEW_MIN_FRAC, 1 - VIE
 // tabela de "tamanho (px) que precisa caber na menor dimensão da tela" por cm; com máximo acumulado para a câmera nunca reaproximar enquanto a cobra cresce
 const VIEW_TAB = []; for (let c = 0, m = 0; c <= 3000; c++) { m = Math.max(m, VIEW_FRAC(c) * (14 + c * 10)); VIEW_TAB.push(Math.min(m, VIEW_MAX_SPAN)); }
 export const VIEW_SPAN = cm => VIEW_TAB[Math.min(3000, Math.max(0, Math.round(cm)))];
+
+// --- comida concentrada em pontos (sorteados a cada partida) ---
+// [quantos pontos, peso (quanta comida cada um recebe), raio em px]: 7 pontos MUITO cheios, 10 médios, 25 pequenos, 50 quase vazios. Posições e pesos (±25%) são sorteados a cada partida.
+export const FOOD_HOT = [[10, 10, 520], [20, 5, 460], [50, 2, 380], [10, .6, 320]];
+export const FOOD_BG = .03;              // fração da comida espalhada pelo mapa todo (0 = só nos pontos)
+export const FOOD_HOT_MOVE = [90, 150];  // a cada tantos segundos (sorteado entre os dois valores) um ponto muda de lugar

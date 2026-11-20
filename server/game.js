@@ -1,4 +1,4 @@
-import { WD, TIME, NS, NSEL, NH, HEAD_NAMES, BOT_NAMES, BOT_NAMES2, BOT_NAMES_EXTRA, LIVES, NB, CONDOMS, CONDOM_HITS, TAPER, DROP_V, INV_TIME, PILLS, PILL_STIFF, PILL_MAX_CM, PILL_BACK, TURN_R0, TURN_RK, EAT_PAD, MAX_DROPS, BODY_MAX, CARD_BACK, CARD_START_CM, CARD_SHRINK_SECS, CARD_GROW_TIERS, CARD_GROW_SECS, CARD_GROW_ACCEL, CARDS_POR_TIPO, CARD_BOOST_BELOW_CM, CARD_BOOST_TO_CM, CARD_BOOST_SECS, VIEW_SPAN } from "../shared/config.js";
+import { WD, TIME, NS, NSEL, NH, HEAD_NAMES, BOT_NAMES, BOT_NAMES2, BOT_NAMES_EXTRA, LIVES, NB, CONDOMS, CONDOM_HITS, TAPER, DROP_V, INV_TIME, PILLS, PILL_STIFF, PILL_MAX_CM, PILL_BACK, TURN_R0, TURN_RK, EAT_PAD, MAX_DROPS, BODY_MAX, CARD_BACK, CARD_START_CM, CARD_SHRINK_SECS, CARD_GROW_TIERS, FOOD_HOT, FOOD_BG, FOOD_HOT_MOVE, CARD_SHRINK_TO, CARD_GROW_SECS, CARD_GROW_ACCEL, CARDS_POR_TIPO, CARD_BOOST_BELOW_CM, CARD_BOOST_TO_CM, CARD_BOOST_SECS, VIEW_SPAN } from "../shared/config.js";
 
 const BIG_FROM = 100, BIG_FULL = 200, BIG_BONUS = .5;   // aceleração das cobras grandes (cm de onde começa, cm onde chega ao máximo, bônus máximo = 50%)
 export function createGame(human, bodies = [], mode = "time", heads = [], pnames = []) {
@@ -17,7 +17,21 @@ export function createGame(human, bodies = [], mode = "time", heads = [], pnames
       y0 = Math.max(0, (y + o - r) / CS | 0), y1 = Math.min(52, (y + o + r) / CS | 0);
     for (let a = x0; a <= x1; a++) for (let b = y0; b <= y1; b++) { const c = grid.get(a * 100 + b); if (c) fn(c); }
   };
-  const nf = () => ({ x: rnd(WD - 100), y: rnd(WD - 100), v: 1 + (Math.random() * 2 | 0), e: Math.random() * 4 | 0 });
+  // pontos de comida: cada um tem um peso (muito / médio / pouco / quase nada) e um raio; posições sorteadas a cada partida e um ponto muda de lugar de tempos em tempos
+  const HOT = [], hpos = () => ({ x: rnd(WD - 1400), y: rnd(WD - 1400) });
+  for (const [n, w, r] of FOOD_HOT) for (let i = 0; i < n; i++) HOT.push({ ...hpos(), w: w * (.75 + Math.random() * .5), r });
+  let hotTot = HOT.reduce((a, h) => a + h.w, 0), hm = FOOD_HOT_MOVE[0] + Math.random() * (FOOD_HOT_MOVE[1] - FOOD_HOT_MOVE[0]);
+  const lim = WD / 2 - 50;
+  const nf = () => {
+    let x, y;
+    if (Math.random() < FOOD_BG) { x = rnd(WD - 100); y = rnd(WD - 100); }
+    else {
+      let t = Math.random() * hotTot, h = HOT[HOT.length - 1]; for (const q of HOT) { t -= q.w; if (t <= 0) { h = q; break; } }
+      const a = Math.random() * 6.2832, d = h.r * Math.pow(Math.random(), .8);
+      x = Math.max(-lim, Math.min(lim, h.x + Math.cos(a) * d)); y = Math.max(-lim, Math.min(lim, h.y + Math.cos(a - 1.5708) * d));
+    }
+    return { x, y, v: 1 + (Math.random() * 2 | 0), e: Math.random() * 4 | 0 };
+  };
   for (let i = 0; i < 1800; i++) add(nf());
 
   // cabeça e nome de cada uma das cobras selecionáveis: jogadores usam a escolha deles; as vagas sem jogador (bots) ganham cabeças que ninguém está usando
@@ -176,14 +190,14 @@ export function createGame(human, bodies = [], mode = "time", heads = [], pnames
       if (s.stf > 0) s.stf -= dt / 60;
       if (s.fx) {   // efeito de card em andamento
         const dts = dt / 60;
-        if (s.fx.t === 0) { s.cm = Math.max(CARD_START_CM, s.cm - s.fx.rate * dts); if (s.cm <= CARD_START_CM) s.fx = null; }   // encolhe a taxa constante (cm/s) até o tamanho inicial
+        if (s.fx.t === 0) { s.cm = Math.max(s.fx.to, s.cm - s.fx.rate * dts); if (s.cm <= s.fx.to) s.fx = null; }   // encolhe a taxa constante (cm/s) até 40% do tamanho que tinha ao pegar
         else if (s.fx.t === 1) { const p0 = s.fx.p; s.fx.p = Math.min(1, p0 + dts / (s.fx.secs || CARD_GROW_SECS)); s.cm += s.fx.d * (s.fx.p ** CARD_GROW_ACCEL - p0 ** CARD_GROW_ACCEL); if (s.fx.p >= 1) s.fx = null; }   // cresce acelerando (progresso^ACCEL); se a cobra comer no meio, o que ela comeu fica
       }
       if (!s.bot) for (const w of pw) if (!w.gone && Math.abs(w.x - s.x) < 90 && Math.abs(w.y - s.y) < 90 && Math.hypot(w.x - s.x, w.y - s.y) < r + 60) { s.hp = CONDOM_HITS; s.gr = 0; w.gone = true; G.pk.push([w.x | 0, w.y | 0, s.i]); }
       if (!s.bot && s.cm <= PILL_MAX_CM) for (const w of pills) if (!w.gone && Math.abs(w.x - s.x) < 90 && Math.abs(w.y - s.y) < 90 && Math.hypot(w.x - s.x, w.y - s.y) < r + 60) { s.stf = PILL_STIFF; w.gone = true; w.back = el + PILL_BACK; G.pp.push([w.x | 0, w.y | 0, s.i]); }   // cobra maior que PILL_MAX_CM passa por cima sem efeito (a pílula fica)
       if (!s.bot) for (const w of cards) if (!w.gone && Math.abs(w.x - s.x) < 90 && Math.abs(w.y - s.y) < 90 && Math.hypot(w.x - s.x, w.y - s.y) < r + 60) {
         w.gone = true; w.back = el + CARD_BACK; G.cp.push([w.x | 0, w.y | 0, s.i, w.t]);
-        if (w.t === 0 && s.cm > CARD_START_CM) s.fx = { t: 0, rate: (s.cm - CARD_START_CM) / CARD_SHRINK_SECS };   // card 1
+        if (w.t === 0 && s.cm * CARD_SHRINK_TO > CARD_START_CM && s.cm > CARD_START_CM) s.fx = { t: 0, to: s.cm * CARD_SHRINK_TO, rate: s.cm * (1 - CARD_SHRINK_TO) / CARD_SHRINK_SECS };   // card 1: encolhe para 40% do tamanho de agora
         else if (w.t === 1 && s.cm < CARD_BOOST_BELOW_CM) s.fx = { t: 1, p: 0, d: CARD_BOOST_TO_CM - s.cm, secs: CARD_BOOST_SECS };   // card 2 em cobra pequena: cresce até CARD_BOOST_TO_CM em CARD_BOOST_SECS
         else if (w.t === 1) s.fx = { t: 1, p: 0, d: s.cm * (CARD_GROW_TIERS.find(q => Math.round(s.cm * 10) / 10 <= q[0])[1] - 1) };   // card 2: d = quanto vai crescer no total (multiplicador depende do tamanho ao pegar)
       }
@@ -229,6 +243,7 @@ export function createGame(human, bodies = [], mode = "time", heads = [], pnames
     if (ices.length && ices[0].gone) ices = ices.filter(f => !f.gone);
     fph -= sec; if (fph <= 0) { fph = 25 + Math.random() * 30; ftg = [800, 1800, 3500][Math.random() * 3 | 0]; }
     cl -= sec; if (cl <= 0) { cl = 20 + Math.random() * 25; const hx = rnd(WD - 600), hy = rnd(WD - 600); for (let i = 0; i < 90; i++) { const a = Math.random() * 6.28, d = Math.random() * 320; add({ x: hx + Math.cos(a) * d, y: hy + Math.sin(a) * d, v: 1 + (Math.random() * 2 | 0), e: Math.random() * 4 | 0 }); } }
+    hm -= sec; if (hm <= 0) { hm = FOOD_HOT_MOVE[0] + Math.random() * (FOOD_HOT_MOVE[1] - FOOD_HOT_MOVE[0]); Object.assign(HOT[Math.random() * HOT.length | 0], hpos()); }   // um ponto de comida muda de lugar
     for (let q = 0; q < 10 && nfood < ftg; q++) add(nf());
     if (nfood > ftg + 150) for (let q = 0; q < 8; q++) { const c = grid.get(key(rnd(WD - 100), rnd(WD - 100))); if (c && c.length && !c[0].d && c[0].e !== 5) { c[0].gone = true; c.shift(); nfood--; } }
     const al = sn.filter(s => s.alive);
