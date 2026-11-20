@@ -10,6 +10,8 @@ import { ST, getImg, resetStore, onSnap, onEvent, runGame } from "./play.js";
 
 // id do navegador (por aba): permite voltar para a mesma cobra se a conexão cair; preferências (nome, cabeça, corpo) ficam salvas no navegador
 const RID = (() => { try { let r = sessionStorage.getItem("cobras_rid"); if (!r) { r = Math.random().toString(36).slice(2, 12) + Date.now().toString(36); sessionStorage.setItem("cobras_rid", r); } return r; } catch (e) { return Math.random().toString(36).slice(2, 14) + "xx"; } })();
+// código fixo do navegador (não muda ao fechar a aba): identifica a pessoa no Ranking do Dia e na trava de cabeça/corpo do dia
+const PID = (() => { try { let r = localStorage.getItem("cobras_pid"); if (!r) { r = "p" + Math.random().toString(36).slice(2, 12) + Date.now().toString(36); localStorage.setItem("cobras_pid", r); } return r; } catch (e) { return "p" + Math.random().toString(36).slice(2, 14); } })();
 const loadPrefs = () => { try { return JSON.parse(localStorage.getItem("cobras_prefs")) || {}; } catch (e) { return {}; } };
 const savePrefs = o => { try { localStorage.setItem("cobras_prefs", JSON.stringify({ ...loadPrefs(), ...o })); } catch (e) {} };
 
@@ -39,10 +41,10 @@ function Preview({ hd, b, empty, w = 220, h = 70, sc = 1 }) {
 function Controls({ lob, send }) {
   const { head, body, you } = lob, [nm, setNm] = useState(lob.nm || ""), inp = useRef();
   useEffect(() => { if (document.activeElement !== inp.current) setNm(lob.nm || ""); }, [lob.nm]);   // nome aplicado pelo servidor (ex.: o salvo no navegador) aparece no campo
-  const taken = lob.heads.filter((x, k) => x != null && k !== you);
-  const goB = (e, d) => { e && e.stopPropagation(); sfx.click(); const b = (body + d + NB) % NB; savePrefs({ b }); send({ t: "body", b }); };
+  const lk = lob.lk, taken = [...lob.heads.filter((x, k) => x != null && k !== you), ...(lob.lh || [])];   // lk: cabeça/corpo travados hoje; lh: cabeças travadas por outras pessoas
+  const goB = (e, d) => { e && e.stopPropagation(); if (lk) return; sfx.click(); const b = (body + d + NB) % NB; savePrefs({ b }); send({ t: "body", b }); };
   const goH = (e, d) => {   // pula as cabeças que outro jogador já está usando
-    e && e.stopPropagation(); let h = head;
+    e && e.stopPropagation(); if (lk) return; let h = head;
     for (let i = 0; i < NH; i++) { h = (h + d + NH) % NH; if (!HEAD_UNIQUE || !taken.includes(h)) break; }
     sfx.click(); savePrefs({ h }); send({ t: "head", h });
   };
@@ -58,7 +60,7 @@ function Controls({ lob, send }) {
   }, []);
   return (
     <div className="ctl" onClick={e => e.stopPropagation()}>
-      <div className="ba">
+      {lk ? <div className="ba lkd">🔒 Cabeça e corpo travados até meia-noite</div> : <><div className="ba">
         <button className="ab" onClick={e => goH(e, -1)}>‹</button>
         <span className="bn">Escolha a Cabeça</span>
         <button className="ab" onClick={e => goH(e, 1)}>›</button>
@@ -68,7 +70,7 @@ function Controls({ lob, send }) {
         <button className="ab" onClick={e => goB(e, -1)}>‹</button>
         <span className="bn">Escolha o Corpo</span>
         <button className="ab" onClick={e => goB(e, 1)}>›</button>
-      </div>
+      </div></>}
       <input ref={inp} className="nm" maxLength={NAME_MAX} value={nm} placeholder="Inserir Nome" onClick={e => e.stopPropagation()}
         onChange={e => { setNm(e.target.value); savePrefs({ nm: e.target.value }); send({ t: "nm", n: e.target.value }); }} />
     </div>
@@ -94,14 +96,41 @@ function ModePick({ lob, send, open }) {
   return <div className="mode"><p className="s">{m ? <><b>Modo: {MODES[m].t}</b><br />{MODES[m].d}</> : ""}<br />Terreno: <b>{(TERRAINS.find(x => x[0] === tr) || TERRAINS[0])[1]}</b>{open && <><br />👑 Só o admin (quem entrou primeiro no link) escolhe o modo e o terreno.</>}</p></div>;
 }
 
+const fmtT = s => s >= 3600 ? (s / 3600).toFixed(1).replace(".", ",") + " h" : Math.max(1, Math.round(s / 60)) + " min";
+// Ranking do Dia: só quem jogou hoje (horário de Brasília), com a foto da cabeça
+function DailyRank({ data, onClose, refresh }) {
+  const rows = data ? data.rows : null, dd = data && data.day ? data.day.split("-").reverse().join("/") : "";
+  return (
+    <div className="drw" onClick={onClose}>
+      <div className="drp" onClick={e => e.stopPropagation()}>
+        <h2>📅 Ranking do Dia {dd && <small>({dd})</small>}</h2>
+        {!rows ? <p className="s">Carregando…</p> : !rows.length ? <p className="s">Ninguém jogou hoje ainda. Jogue uma partida para aparecer aqui!</p> : (
+          <div className="drs"><table>
+            <thead><tr><th>#</th><th></th><th>Jogador</th><th title="Vitórias (⏱ por tempo · 💀 eliminação)">🏆</th><th>Partidas</th><th>Maior</th><th>Soma</th><th>Tempo</th></tr></thead>
+            <tbody>{rows.map((r, i) => (
+              <tr key={i}>
+                <td>{i + 1}</td>
+                <td>{r.h != null && <img className="rh" src={"/cobra" + (r.h + 1) + ".png"} alt="" onError={e => { e.target.style.visibility = "hidden"; }} />}</td>
+                <td className="rn">{r.n}</td>
+                <td><b>{r.w}</b>{r.w > 0 && <small> (⏱{r.wt} 💀{r.we})</small>}</td>
+                <td>{r.p}</td><td>{r.b.toFixed(1)} cm</td><td>{r.t.toFixed(1)} cm</td><td>{fmtT(r.s)}</td>
+              </tr>))}</tbody>
+          </table></div>)}
+        <div className="act"><button className="btn g" onClick={refresh}>↻ Atualizar</button><button className="btn" onClick={onClose}>Fechar</button></div>
+        <p className="s">Vitórias, partidas, maior tamanho, soma dos tamanhos finais e tempo jogado hoje. Zera à meia-noite (Brasília).</p>
+      </div>
+    </div>
+  );
+}
+
 function Board({ sb }) {
   return sb && sb.length ? <div className="sb"><b>🏆 Placar da sala (vitórias)</b><br />{sb.map(([n, w], i) => <span key={i}>{i + 1}. {n} — {w}</span>)}</div> : null;
 }
 
-function Lobby({ lob, send, muted, setMuted, notice, clearNotice }) {
+function Lobby({ lob, send, muted, setMuted, notice, clearNotice, openDr }) {
   const prevYou = useRef(-1);
   useEffect(() => {   // ao escolher uma cobra, reaplica o nome/cabeça/corpo que a pessoa usou da última vez
-    if (prevYou.current < 0 && lob.you >= 0) {
+    if (prevYou.current < 0 && lob.you >= 0 && !lob.lk) {
       const p = loadPrefs();
       if (Number.isInteger(p.b) && p.b >= 0 && p.b < NB && p.b !== lob.body) send({ t: "body", b: p.b });
       if (Number.isInteger(p.h) && p.h >= 0 && p.h < NH && p.h !== lob.head) send({ t: "head", h: p.h });
@@ -140,9 +169,11 @@ function Lobby({ lob, send, muted, setMuted, notice, clearNotice }) {
       <div className="act">
       <button className="btn" style={you >= 0 ? { background: SLOT_COLORS[you], color: "#04210f", boxShadow: "0 0 14px #39ff1488" } : null} disabled={you < 0 || !lob.mode || !(open || live || count)} onClick={() => { sfx.click(); send({ t: live ? "join" : "ready" }); }}>{live ? "ENTRAR NA PARTIDA" : rd[you] ? "Cancelar" : "PRONTO"}</button>
       <button className="btn g" onClick={() => setMuted(toggleMute())}>{muted ? "🔇" : "🔊"}</button>
+      <button className="btn g" onClick={openDr}>📅 Ranking do Dia</button>
       {fsOk() && <button className="btn g fsb" onClick={() => toggleFs()}>⛶ Tela cheia</button>}
       </div>
       {!fsOk() && /iPhone|iPod/.test(navigator.userAgent) && !navigator.standalone && <p className="s ios">📱 iPhone: toque em Compartilhar → "Adicionar à Tela de Início" e abra pelo ícone para jogar em tela cheia.</p>}
+      <p className="s">{lob.lk ? "🔒 Hoje sua cabeça e seu corpo estão travados (valem até meia-noite)." : "ℹ️ Ao jogar sua 1ª partida do dia, a cabeça e o corpo que você escolheu ficam travados até meia-noite (horário de Brasília)."}</p>
       <p className="s">👥 Online agora: <b>{lob.on}</b> · Com cobra: {n} · Prontos: {nr} de {lob.on}{lob.host ? " · 👑 Você é o admin" : lob.adm < 0 ? " · 👑 O admin ainda não escolheu cobra" : ""}</p>
       <p className="s">No lobby: ← → trocam o corpo e ↑ ↓ trocam a cabeça. Teclado no jogo: ← → (ou A D) giram a cobra enquanto seguradas; ↑ ↓ (ou W S) apontam para cima e para baixo, e junto com ← → fazem a diagonal. Acelerar: espaço, Shift ou clique. Mouse e dedo (joystick) também funcionam.</p>
     </div>
@@ -190,7 +221,7 @@ function Rank({ rank }) {
 }
 
 export default function App() {
-  const [scr, setScr] = useState("conn"), [lob, setLob] = useState(null), [end, setEnd] = useState(null), [muted, setMuted] = useState(false), [rc, setRc] = useState(0), [notice, setNotice] = useState(""), [gk, setGk] = useState(0);
+  const [scr, setScr] = useState("conn"), [lob, setLob] = useState(null), [end, setEnd] = useState(null), [muted, setMuted] = useState(false), [rc, setRc] = useState(0), [notice, setNotice] = useState(""), [gk, setGk] = useState(0), [drOpen, setDrOpen] = useState(false), [drData, setDrData] = useState(null);
   const scrR = useRef("conn"), rcR = useRef(false); scrR.current = scr;   // rc > 0: conexão caiu no meio da partida e estamos tentando voltar (tentativa nº)
   const wsr = useRef(null);
   useEffect(() => {
@@ -200,10 +231,11 @@ export default function App() {
     let ws, dead = false, pi;
     const open = () => {
       ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws"); wsr.current = ws;
-      ws.onopen = () => { ws.send(JSON.stringify({ t: "hello", rid: RID })); pi = setInterval(() => ws.readyState === 1 && ws.send('{"t":"ping"}'), 20000); };
+      ws.onopen = () => { ws.send(JSON.stringify({ t: "hello", rid: RID, pid: PID })); pi = setInterval(() => ws.readyState === 1 && ws.send('{"t":"ping"}'), 20000); };
       ws.onmessage = e => {
         const m = JSON.parse(e.data);
         if (m.t === "lobby") { setLob(m); if (!rcR.current) setScr(s => (m.st === "lobby" || s === "conn") ? "lobby" : s); }
+        else if (m.t === "dr") setDrData(m);
         else if (m.t === "hi") { if (rcR.current && !m.resumed) { rcR.current = false; setRc(0); setScr("lobby"); setNotice("📡 A conexão caiu e a partida acabou (ou o servidor reiniciou) enquanto você estava fora. Escolha uma cobra para entrar de novo."); } }
         else if (m.t === "start") { rcR.current = false; setRc(0); setNotice(""); resetStore(m); setGk(k => k + 1); setScr("play"); }
         else if (m.t === "left") setScr("lobby");
@@ -222,9 +254,11 @@ export default function App() {
   }, []);
   const send = o => { const w = wsr.current; if (w && w.readyState === 1) w.send(JSON.stringify(o)); };
   voice.bind(send);
+  const openDr = () => { setDrOpen(true); send({ t: "dr" }); };
+  const drModal = drOpen && <DailyRank data={drData} onClose={() => setDrOpen(false)} refresh={() => send({ t: "dr" })} />;
 
   if (scr === "conn" || !lob) return <div className="menu"><h1>Conectando…</h1><p className="s">O servidor grátis pode levar até 1 minuto para acordar. Aguarde.</p></div>;
-  if (scr === "lobby") return <><Lobby lob={lob} send={send} muted={muted} setMuted={setMuted} notice={notice} clearNotice={() => setNotice("")} /><VoiceBar /></>;
+  if (scr === "lobby") return <><Lobby lob={lob} send={send} muted={muted} setMuted={setMuted} notice={notice} clearNotice={() => setNotice("")} openDr={openDr} /><VoiceBar />{drModal}</>;
   if (scr === "play") return <><Game key={gk} send={send} muted={muted} setMuted={setMuted} /><VoiceBar />{rc > 0 && <div className="rcn"><div><i>🔄</i> Conexão perdida</div><div>Reconectando… (tentativa {rc})</div><small>Sua cobra continua jogando sozinha por até 45 segundos. Se o servidor estava dormindo, pode levar até 1 minuto para acordar. Não feche esta página.</small></div>}</>;
   const rank = end.l.map(([i, c]) => ({ n: ST.names[i], cm: c / 10, main: i < NSEL, me: i === ST.you }));
   return (
@@ -236,7 +270,8 @@ export default function App() {
           <p className="sub">Quem tem a menor cobra é {rank[rank.length - 1].n} com {rank[rank.length - 1].cm.toFixed(1)} cm</p></>}
       <Rank rank={rank} />
       <Board sb={end.sb} />
+      <button className="btn g" onClick={openDr}>📅 Ranking do Dia</button>
       <button className="btn" onClick={() => { sfx.click(); send({ t: "restart" }); }}>Reiniciar partida</button>
-    </div></>
+    </div>{drModal}</>
   );
 }

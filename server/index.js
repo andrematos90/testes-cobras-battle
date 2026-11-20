@@ -4,6 +4,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { WebSocketServer } from "ws";
 import { createGame } from "./game.js";
+import * as daily from "./daily.js";
 import { TICK, NSEL, NB, NH, HEAD_NAMES, HEAD_UNIQUE, NAME_MAX, COUNTDOWN, END_WAIT } from "../shared/config.js";
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
@@ -27,9 +28,15 @@ const send = (ws, o) => ws.readyState === 1 && ws.send(JSON.stringify(o));
 const online = () => [...wss.clients].filter(w => w.readyState === 1);
 const nameOf = w => w.nm || HEAD_NAMES[w.head];   // nome digitado ou, se vazio, o nome da cabeça
 // cabeça livre mais próxima da preferida (duas pessoas não usam a mesma cabeça ao mesmo tempo)
-const freeHead = (pref, ws) => { if (!HEAD_UNIQUE) return pref; const used = new Set(slots.filter(w => w && w !== ws).map(w => w.head)); for (let d = 0; d < NH; d++) { const h = (pref + d) % NH; if (!used.has(h)) return h; } return pref; };
+const myLock = ws => (ws.pid ? daily.lockOf(ws.pid) : null);   // { h, b }: cabeça e corpo travados hoje para essa pessoa
+const freeHead = (pref, ws) => {   // cabeça livre mais próxima da preferida; cabeças travadas hoje por OUTRAS pessoas também contam como ocupadas, e quem tem trava só pode usar a sua
+  const lk = myLock(ws); if (lk) return lk.h;
+  if (!HEAD_UNIQUE) return pref;
+  const used = new Set(slots.filter(w => w && w !== ws).map(w => w.head)); for (const h of daily.lockedHeadsExcept(ws.pid)) used.add(h);
+  for (let d = 0; d < NH; d++) { const h = (pref + d) % NH; if (!used.has(h)) return h; } return pref;
+};
 const cleanName = v => String(v ?? "").replace(/[\u0000-\u001f<>&"]/g, "").replace(/\s+/g, " ").trim().slice(0, NAME_MAX);
-const lobbyMsg = ws => ({ t: "lobby", st: state, slots: slots.map(w => !!w), ready: slots.map(w => !!w && ready.has(w)), bodies: slots.map(w => (w ? w.body : null)), heads: slots.map(w => (w ? w.head : null)), names: slots.map(w => (w ? nameOf(w) : null)), body: ws.body, head: ws.head, nm: ws.nm, sb: boardList(), you: slots.indexOf(ws), on: online().length, cd: cdN, mode, terrain, host: online()[0] === ws, adm: slots.indexOf(online()[0]) });   // host: você é o admin (o online mais antigo); adm: qual retângulo é do admin (-1 = sem cobra)
+const lobbyMsg = ws => ({ t: "lobby", st: state, slots: slots.map(w => !!w), ready: slots.map(w => !!w && ready.has(w)), bodies: slots.map(w => (w ? w.body : null)), heads: slots.map(w => (w ? w.head : null)), names: slots.map(w => (w ? nameOf(w) : null)), body: ws.body, head: ws.head, nm: ws.nm, sb: boardList(), lk: myLock(ws), lh: [...daily.lockedHeadsExcept(ws.pid)], you: slots.indexOf(ws), on: online().length, cd: cdN, mode, terrain, host: online()[0] === ws, adm: slots.indexOf(online()[0]) });   // host: você é o admin (o online mais antigo); adm: qual retângulo é do admin (-1 = sem cobra)
 // sala de voz: o servidor só diz quem está nela e repassa a sinalização WebRTC; o áudio vai direto entre os jogadores
 let vseq = 0, vlast = "";
 const vlist = () => online().filter(w => w.voice);
@@ -55,6 +62,7 @@ function reset() { for (const h of held.values()) clearTimeout(h.t); held.clear(
 
 function start() {
   for (let i = 0; i < NSEL; i++) if (slots[i] && !ready.has(slots[i])) slots[i] = null;   // quem escolheu cobra mas não clicou em PRONTO perde a vaga (fica no lobby e pode entrar depois)
+  for (const w of slots) if (w) { daily.lockFor(w.pid, w.head, w.body, nameOf(w)); const lk = myLock(w); if (lk) { w.head = lk.h; w.body = lk.b; } w.tin = Date.now(); }   // 1ª partida do dia: cabeça e corpo ficam travados até a meia-noite
   state = "play"; G = createGame(slots.map(w => !!w), slots.map(w => (w ? w.body : null)), mode, slots.map(w => (w ? w.head : null)), slots.map(w => (w ? nameOf(w) : null))); tk = 0;
   inGame.clear(); slots.forEach(w => w && inGame.add(w));
   slots.forEach((w, i) => w && send(w, { t: "start", you: i, names: G.names, sk: G.sk, heads: G.hd, md: mode, tr: terrain }));
@@ -70,6 +78,8 @@ function start() {
       loop = null; state = "end";
       const r = G.result(), ww = slots[r.w], wl = r.l[0];   // vitória só conta se quem ficou em 1º é um jogador humano (no modo eliminação, vivo)
       if (ww && inGame.has(ww) && (r.tm || wl[2])) { const k = ww.rid || ww.id, e = board.get(k) || { n: "", w: 0 }; e.n = nameOf(ww); e.w++; board.set(k, e); }
+      { const fin = new Map(r.l.map(x => [x[0], x[1] / 10])), bst = new Map(G.lbBest().map(x => [x[0], x[1] / 10]));
+        slots.forEach((w, i) => { if (w && inGame.has(w)) recordFor(w, i, fin.get(i), bst.get(i), i === r.w && (r.tm || wl[2])); }); }   // Ranking do Dia
       humans().forEach(w => send(w, { t: "end", ...r, sb: boardList() }));
       endT = setTimeout(reset, END_WAIT * 1000);   // ranking fica na tela por um tempo e depois o lobby reabre sozinho (ninguém precisa clicar em Reiniciar)
       return;
@@ -80,6 +90,10 @@ function start() {
   loop = setTimeout(tick, TICK);
 }
 
+// Ranking do Dia: grava a participação de um jogador (fim da partida ou saída no meio)
+function recordFor(ws, i, final, best, win) {
+  daily.record(ws.pid, { name: nameOf(ws), head: ws.head, body: ws.body, final, best, win: !!win, mode, secs: (Date.now() - (ws.tin || Date.now())) / 1000 });
+}
 // reconexão: quem caiu no meio da partida tem HOLD_MS para voltar e reassumir a mesma cobra (enquanto isso ela joga sozinha como bot)
 function hold(ws) {
   const me = slots.indexOf(ws); if (G && me >= 0) G.drop(me);
@@ -87,7 +101,7 @@ function hold(ws) {
 }
 function takeover(nw, old) {
   const me = slots.indexOf(old); if (me < 0 || !G) return -1;
-  nw.body = old.body; nw.head = old.head; nw.nm = old.nm;
+  nw.body = old.body; nw.head = old.head; nw.nm = old.nm; nw.pid = old.pid; nw.tin = old.tin;
   slots[me] = nw; inGame.delete(old); inGame.add(nw); if (ready.has(old)) { ready.delete(old); ready.add(nw); }
   const h = held.get(old.rid); if (h) { clearTimeout(h.t); held.delete(old.rid); }
   G.resume(me); try { old.terminate(); } catch (e) {}
@@ -95,7 +109,9 @@ function takeover(nw, old) {
 }
 // tira o jogador da partida: a cobra dele continua como bot e os outros recebem o aviso
 function leaveGame(ws) {
-  const me = slots.indexOf(ws); inGame.delete(ws);
+  const me = slots.indexOf(ws);
+  if (G && !G.over && me >= 0 && inGame.has(ws)) { const f = (G.lb().find(x => x[0] === me) || [0, 0])[1] / 10, b = (G.lbBest().find(x => x[0] === me) || [0, 0])[1] / 10; recordFor(ws, me, f, b, false); }   // saiu no meio: a partida conta, sem vitória
+  inGame.delete(ws);
   if (me >= 0) { slots[me] = null; ready.delete(ws); if (G) G.drop(me); notify(ws, { t: "ev", k: "out", i: me }); }
   if (!humans().length) reset(); else bc();
 }
@@ -113,23 +129,26 @@ wss.on("connection", ws => {
         const old = (held.get(ws.rid) || {}).ws || [...wss.clients].find(w => w !== ws && w.rid === ws.rid && inGame.has(w));   // ou uma conexão antiga "meio morta" que ainda aparece aberta
         if (old && inGame.has(old) && slots.includes(old)) me2 = takeover(ws, old);
       }
+      if (typeof m.pid === "string" && /^[\w-]{8,40}$/.test(m.pid)) { ws.pid = m.pid; const lk = myLock(ws); if (lk) { ws.head = lk.h; ws.body = lk.b; } }   // pid: código do navegador (identifica a pessoa para o Ranking do Dia)
       send(ws, { t: "hi", resumed: me2 >= 0 });
+      if (me2 < 0) send(ws, lobbyMsg(ws));   // agora que sabemos quem é (pid), manda o lobby já com a trava do dia
       if (me2 >= 0) { send(ws, { t: "start", you: me2, names: G.names, sk: G.sk, heads: G.hd, md: mode, tr: terrain }); bc(); }
     }
+    else if (m.t === "dr") send(ws, { t: "dr", day: daily.today(), rows: daily.rows() });   // Ranking do Dia
     else if (m.t === "vjoin") { ws.voice = true; vroster(); }
     else if (m.t === "vleave") { ws.voice = false; ws.vsp = false; vroster(); }
     else if (m.t === "vsp") { if (ws.voice) { ws.vsp = !!m.on; vstat(); } }   // membro da conversa avisa quando começa/para de falar
     else if (m.t === "vsig") { const t = ws.voice && vlist().find(w => w.id === m.to); if (t && JSON.stringify(m.d ?? null).length < 12000) send(t, { t: "vsig", from: ws.id, d: m.d }); }
     else if (m.t === "pick" && (state === "lobby" || state === "play") && !playing) {   // durante a partida dá para escolher uma cobra livre e entrar
       if (me >= 0) { slots[me] = null; ready.delete(ws); }
-      if (Number.isInteger(m.slot) && m.slot >= 0 && m.slot < NSEL && !slots[m.slot] && m.slot !== me) { slots[m.slot] = ws; ws.head = freeHead(ws.head, ws); }
+      if (Number.isInteger(m.slot) && m.slot >= 0 && m.slot < NSEL && !slots[m.slot] && m.slot !== me) { slots[m.slot] = ws; ws.head = freeHead(ws.head, ws); const lk = myLock(ws); if (lk) ws.body = lk.b; }
       bc();
     } else if (m.t === "mode" && state === "lobby" && online()[0] === ws && (m.m === "time" || m.m === "elim")) {   // o admin escolhe o modo e o terreno
       mode = m.m; bc();
     } else if (m.t === "terrain" && state === "lobby" && online()[0] === ws && ["stone", "sand", "grass", "snow", "lava", "night"].includes(m.v)) {   // só o admin troca o terreno
       terrain = m.v; bc();
     } else if (m.t === "body" && (state === "lobby" || state === "play") && !playing) {
-      if (Number.isInteger(m.b) && m.b >= 0 && m.b < NB) { ws.body = m.b; bc(); }
+      if (Number.isInteger(m.b) && m.b >= 0 && m.b < NB && !myLock(ws)) { ws.body = m.b; bc(); }   // com trava do dia o corpo não muda
     } else if (m.t === "head" && (state === "lobby" || state === "play") && !playing && me >= 0) {   // trocar a cabeça (só quem já tem retângulo; cabeça de outro jogador é recusada)
       if (Number.isInteger(m.h) && m.h >= 0 && m.h < NH && freeHead(m.h, ws) === m.h) { ws.head = m.h; bc(); }
     } else if (m.t === "nm" && (state === "lobby" || state === "play") && !playing && me >= 0) {   // nome digitado (vazio = usa o nome da cabeça)
@@ -138,6 +157,7 @@ wss.on("connection", ws => {
       ready.has(ws) ? ready.delete(ws) : ready.add(ws); bc();
       state === "count" ? checkCount() : tryStart();
     } else if (m.t === "join" && state === "play" && me >= 0 && !playing && G) {
+      daily.lockFor(ws.pid, ws.head, ws.body, nameOf(ws)); { const lk = myLock(ws); if (lk) { ws.head = lk.h; ws.body = lk.b; } } ws.tin = Date.now();
       inGame.add(ws); const chg = G.join(me, ws.body, ws.head, nameOf(ws));
       send(ws, { t: "start", you: me, names: G.names, sk: G.sk, heads: G.hd, md: mode, tr: terrain });
       notify(ws, { t: "ev", k: "in", i: me, sk: ws.body, h: ws.head, nm: nameOf(ws) });
@@ -167,5 +187,8 @@ wss.on("connection", ws => {
   });
 });
 
+let seenDay = daily.today();
+setInterval(() => { const d = daily.today(); if (d !== seenDay) { seenDay = d; bc(); } }, 20000).unref();   // meia-noite: as travas do dia anterior caem e o lobby é atualizado
+await Promise.race([daily.initDaily(), new Promise(r => setTimeout(r, 6000))]);   // carrega o ranking do dia do banco antes de abrir o servidor (no máximo 6 s)
 const port = process.env.PORT || 3000;
 server.listen(port, () => console.log("Cobras.io no ar na porta " + port));
