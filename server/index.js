@@ -41,15 +41,15 @@ const humans = () => slots.filter(w => w && inGame.has(w));
 const notify = (except, o) => { for (const w of inGame) if (w !== except) send(w, o); };   // avisos "entrou/saiu da partida"
 
 // basta UMA pessoa online escolher cobra e clicar em PRONTO: corre a contagem e a partida começa (quem não clicou em PRONTO fica de fora e entra depois)
-const someReady = () => [...ready].some(w => w.readyState === 1);
-const tryStart = () => { if (state === "lobby" && mode && someReady()) startCount(); };
+const allReady = () => { const o = online(); return o.length > 0 && o.every(w => ready.has(w)); };   // todos que estão online no link escolheram uma cobra e clicaram em PRONTO
+const tryStart = () => { if (state === "lobby" && mode && allReady()) startCount(); };
 function startCount() {
   state = "count"; cdN = COUNTDOWN; cdPart = new Set(ready); bc();
   cdT = setInterval(() => { cdN--; if (cdN <= 0) { clearInterval(cdT); cdT = null; cdN = 0; cdPart = null; start(); } else bc(); }, 1000);
 }
 function cancelCount() { clearInterval(cdT); cdT = null; cdN = 0; cdPart = null; state = "lobby"; bc(); }
 // a contagem só é cancelada se NINGUÉM ficar pronto (quem clica em PRONTO durante a contagem também entra)
-const checkCount = () => { if (state === "count" && !someReady()) cancelCount(); };
+const checkCount = () => { if (state !== "count") return; const still = [...(cdPart || [])].filter(w => w.readyState === 1); if (!still.length || still.some(w => !ready.has(w))) cancelCount(); };   // a contagem só cancela se alguém que estava pronto desistiu (Cancelar) ou saiu; quem chega no meio da contagem entra depois
 
 function reset() { for (const h of held.values()) clearTimeout(h.t); held.clear(); if (!online().length) board.clear(); clearTimeout(loop); loop = null; clearTimeout(endT); endT = null; clearInterval(cdT); cdT = null; cdN = 0; cdPart = null; G = null; state = "lobby"; mode = "time"; terrain = "stone"; slots.fill(null); ready.clear(); inGame.clear(); bc(); }
 
@@ -124,7 +124,7 @@ wss.on("connection", ws => {
       if (me >= 0) { slots[me] = null; ready.delete(ws); }
       if (Number.isInteger(m.slot) && m.slot >= 0 && m.slot < NSEL && !slots[m.slot] && m.slot !== me) { slots[m.slot] = ws; ws.head = freeHead(ws.head, ws); }
       bc();
-    } else if (m.t === "mode" && state === "lobby" && online()[0] === ws && (m.m === "time" || m.m === "elim")) {   // só o admin (quem entrou primeiro e ainda está online) troca o modo; se ele sair, o próximo mais antigo vira admin
+    } else if (m.t === "mode" && state === "lobby" && online()[0] === ws && (m.m === "time" || m.m === "elim")) {   // o admin escolhe o modo e o terreno
       mode = m.m; bc();
     } else if (m.t === "terrain" && state === "lobby" && online()[0] === ws && ["stone", "sand", "grass", "snow", "lava", "night"].includes(m.v)) {   // só o admin troca o terreno
       terrain = m.v; bc();

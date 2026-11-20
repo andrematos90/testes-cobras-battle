@@ -20,7 +20,7 @@ export const CARD_IMGS = [0, 1].map(i => {
 });
 export const ST = { snakes: new Map(), food: [], m: [], l: [], lv: 0 };
 export function resetStore(m) {
-  Object.assign(ST, { fl: {}, hm: 0, tr: m.tr || "stone", you: m.you, names: m.names, sk: m.sk, heads: m.heads, snakes: new Map(), food: [], m: [], l: [], lv: 0, x: 0, y: 0, al: 1, ag: 0, md: m.md, tl: m.md === "elim" ? -1 : 600, n: 50, lf: m.md === "elim" ? LIVES : -1, hp: 0, shed: [], pw: [], pl: [], hits: [], tails: [], P: null, kl: 0, pb: 2.2, jv: 0, la: performance.now(), lastC: 0, shake: 0, dead: false, drops: 0, tp: 0, te: 0 });
+  Object.assign(ST, { fl: {}, hm: 0, tr: m.tr || "stone", you: m.you, names: m.names, sk: m.sk, heads: m.heads, snakes: new Map(), food: [], m: [], l: [], lv: 0, x: 0, y: 0, al: 1, ag: 0, md: m.md, tl: 600, n: 50, lf: m.md === "elim" ? LIVES : -1, hp: 0, shed: [], pw: [], pl: [], hits: [], tails: [], P: null, kl: 0, pb: 2.2, jv: 0, la: performance.now(), lastC: 0, shake: 0, dead: false, drops: 0, tp: 0, te: 0 });
 }
 
 export const CHAO = new Image(); CHAO.src = CHAO_URL;
@@ -258,7 +258,7 @@ export function runGame(cv, { hud, sc, dd, fin, tail, bn, vg, send }) {
       if (tl >= 0) for (const t of [60, 30, 10]) if (tl <= t && tl > t - 6 && !ST.fl[t]) { ST.fl[t] = 1; banner(t === 60 ? "⏳ Falta 1 minuto!" : t === 30 ? "⏳ 30 segundos!" : "🔥 Últimos 10 segundos!", t === 10 ? "#f87171" : "#fbbf24", t === 10 ? 3000 : 2600); }
       if (ST.lf === 0 && ST.al && !ST.fl.last) { ST.fl.last = 1; banner("💔 Última vida!", "#f87171"); }
       // bordas vermelhas piscando nos 4 cantos: últimos 60 s (mais rápido nos últimos 10), última vida ou duelo final
-      const lvl = tl >= 0 ? (tl <= 10 ? 2 : tl <= 60 ? 1 : 0) : (ST.al && (ST.lf === 0 || (ST.md === "elim" && ST.hd === 2 && ST.hm > 2))) ? 1 : 0, vc = lvl ? "on l" + lvl : "";
+      const lvl = tl >= 0 && tl <= 10 ? 2 : (tl >= 0 && tl <= 60) || (ST.lf >= 0 && ST.al && (ST.lf === 0 || (ST.md === "elim" && ST.hd === 2 && ST.hm > 2))) ? 1 : 0, vc = lvl ? "on l" + lvl : "";
       if (vc !== lastVg) { lastVg = vc; vg.className = vc; }
       if (ST.md === "elim") { ST.hm = Math.max(ST.hm, ST.hd || 0); if (ST.hd === 2 && ST.hm > 2 && !ST.fl.duel) { ST.fl.duel = 1; banner("⚔️ Só restam 2 jogadores vivos!", "#fbbf24"); } }
       const it = (ic, v) => `<span class="it"><i>${ic}</i>${v}</span>`;   // cada indicador num bloco com espaço entre o ícone e o valor

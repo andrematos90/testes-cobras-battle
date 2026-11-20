@@ -90,7 +90,8 @@ export function createGame(human, bodies = [], mode = "time", heads = [], pnames
   const G = { sn, sk: sn.map(s => s.sk), hd: HD, names: sn.map(s => s.nm), over: false, dead: [], eats: [], pk: [], pop: [], hits: [], pp: [], cp: [] };
 
   const die = s => {
-    s.alive = false; G.dead.push([s.x | 0, s.y | 0, s.i]); s.fin = s.cm; s.best = Math.max(s.best, s.cm); s.hp = 0; s.gr = 0; s.ex = 0; s.inv = 0; s.stf = 0; s.fx = null; s.dd = dc++; s.lx = s.x; s.ly = s.y;
+    s.alive = false; G.dead.push([s.x | 0, s.y | 0, s.i]); s.tot = (s.tot || 0) + s.cm; s.fin = s.cm;   // tot: soma dos tamanhos de cada vida já encerrada (ranking final do modo eliminação)
+     s.best = Math.max(s.best, s.cm); s.hp = 0; s.gr = 0; s.ex = 0; s.inv = 0; s.stf = 0; s.fx = null; s.dd = dc++; s.lx = s.x; s.ly = s.y;
     // bolinhas verdes: no máximo MAX_DROPS por morte; o valor total é o mesmo de antes (cada bolinha vale mais quando a cobra era gigante)
     { const tot = Math.ceil(L(s) / 3), cnt = Math.min(tot, MAX_DROPS), vv = DROP_V * tot / cnt, sgd = s.segs, md = sgd.length;
       for (let j = 0; j < cnt; j++) { const q = sgd[Math.min(md - 1, (j * md / cnt) | 0)]; drops.push(add({ x: q.x + rnd(20), y: q.y + rnd(20), v: vv, d: el + 1, e: 0 })); } }
@@ -231,7 +232,8 @@ export function createGame(human, bodies = [], mode = "time", heads = [], pnames
     for (let q = 0; q < 10 && nfood < ftg; q++) add(nf());
     if (nfood > ftg + 150) for (let q = 0; q < 8; q++) { const c = grid.get(key(rnd(WD - 100), rnd(WD - 100))); if (c && c.length && !c[0].d && c[0].e !== 5) { c[0].gone = true; c.shift(); nfood--; } }
     const al = sn.filter(s => s.alive);
-    G.over = force || (TM ? el >= TIME : (humanAlive() === 0 || (humanAlive() === 1 && elimN >= 1)));   // elim: acaba quando sobra só 1 humano vivo (ou nenhum)
+    G.te = el >= TIME;   // tempo esgotado
+    G.over = force || G.te || (!TM && (humanAlive() === 0 || (humanAlive() === 1 && elimN >= 1)));   // elim: também tem 10 min; acaba antes se sobra só 1 humano vivo (ou nenhum)
   };
 
   G.input = (i, a, b, k) => { const s = sn[i]; if (s) s.inp = { a, b, k }; };
@@ -261,9 +263,11 @@ export function createGame(human, bodies = [], mode = "time", heads = [], pnames
       all.sort((a, b) => b.cm - a.cm);
       return { l: all.map(s => [s.i, Math.round(s.cm * 10), 1]), w: all[0].i, tm: 1, md: mode };
     }
-    const hum = s => !s.bot && s.i < NSEL;   // eliminação: humanos vivos primeiro, depois bots vivos (por tamanho), depois os mortos (quem caiu por último fica melhor)
-    all.sort((a, b) => a.alive !== b.alive ? (a.alive ? -1 : 1) : a.alive ? (hum(a) !== hum(b) ? (hum(a) ? -1 : 1) : b.cm - a.cm) : b.dd - a.dd);
-    return { l: all.map(s => [s.i, Math.round(Math.max(s.best, s.alive ? s.cm : s.fin) * 10), s.alive ? 1 : 0]), w: all[0].i, tm: 0, md: mode };
+    // eliminação: o tamanho final de cada cobra é a SOMA de todas as vidas dela (as que já acabaram + a atual)
+    const hum = s => !s.bot && s.i < NSEL, tot = s => (s.tot || 0) + (s.alive ? s.cm : 0), te = !!G.te;
+    // tempo esgotado com mais de uma cobra viva: as vivas vêm primeiro, da maior soma para a menor; sem tempo (último humano vivo): humanos vivos primeiro, como antes
+    all.sort((a, b) => a.alive !== b.alive ? (a.alive ? -1 : 1) : a.alive ? (te ? tot(b) - tot(a) : (hum(a) !== hum(b) ? (hum(a) ? -1 : 1) : tot(b) - tot(a))) : b.dd - a.dd);
+    return { l: all.map(s => [s.i, Math.round(tot(s) * 10), s.alive ? 1 : 0]), w: all[0].i, tm: 0, te: te ? 1 : 0, md: mode };
   };
   const spec = {}; let force = false;
   const humanAlive = () => sn.filter(s => !s.bot && s.i < NSEL && s.alive).length;
@@ -293,7 +297,7 @@ export function createGame(human, bodies = [], mode = "time", heads = [], pnames
     const f = []; near(cx, cy, B, c => { for (const o of c) if (Math.abs(o.x - cx) < B && Math.abs(o.y - cy) < B) f.push(o.x | 0, o.y | 0, o.d ? 4 : o.e === 5 && el - o.t < 1 ? 6 : o.e); });   // 6 = sorvete recém-criado (o navegador o desenha caindo do céu)
     return { t: "s", x: cx | 0, y: cy | 0, al: p.alive ? 1 : 0, sp, hd: humanAlive(), ns, f, m: sn.slice(0, NSEL).filter(s => s.alive).map(s => [s.i, s.x | 0, s.y | 0]),
       ea: G.eats.filter(e => Math.abs(e[0] - cx) < B && Math.abs(e[1] - cy) < B), dx: G.dead.filter(e => Math.abs(e[0] - cx) < B && Math.abs(e[1] - cy) < B),
-      lf: TM ? -1 : p.lives, hp: p.hp, ht: G.hits.filter(h => h[0] === i).map(h => [h[2], h[3], h[1]]), pop: G.pop.filter(e => Math.abs(e[0] - cx) < B && Math.abs(e[1] - cy) < B), pw: pw.filter(w => !w.gone && Math.abs(w.x - cx) < B + 100 && Math.abs(w.y - cy) < B + 100).map(w => [w.x | 0, w.y | 0]), pl: pills.filter(w => !w.gone && Math.abs(w.x - cx) < B + 100 && Math.abs(w.y - cy) < B + 100).map(w => [w.x | 0, w.y | 0]), pp: G.pp.filter(e => Math.abs(e[0] - cx) < B && Math.abs(e[1] - cy) < B), pk: G.pk.filter(e => Math.abs(e[0] - cx) < B && Math.abs(e[1] - cy) < B), cd: cards.filter(w => !w.gone && Math.abs(w.x - cx) < B + 100 && Math.abs(w.y - cy) < B + 100).map(w => [w.x | 0, w.y | 0, w.t, w.id]), cp: G.cp.filter(e => Math.abs(e[0] - cx) < B && Math.abs(e[1] - cy) < B), ag: ag > 0 ? 1 : 0, tl: TM ? Math.max(0, TIME - el) | 0 : -1, n: sn.filter(s => s.alive).length };
+      lf: TM ? -1 : p.lives, hp: p.hp, ht: G.hits.filter(h => h[0] === i).map(h => [h[2], h[3], h[1]]), pop: G.pop.filter(e => Math.abs(e[0] - cx) < B && Math.abs(e[1] - cy) < B), pw: pw.filter(w => !w.gone && Math.abs(w.x - cx) < B + 100 && Math.abs(w.y - cy) < B + 100).map(w => [w.x | 0, w.y | 0]), pl: pills.filter(w => !w.gone && Math.abs(w.x - cx) < B + 100 && Math.abs(w.y - cy) < B + 100).map(w => [w.x | 0, w.y | 0]), pp: G.pp.filter(e => Math.abs(e[0] - cx) < B && Math.abs(e[1] - cy) < B), pk: G.pk.filter(e => Math.abs(e[0] - cx) < B && Math.abs(e[1] - cy) < B), cd: cards.filter(w => !w.gone && Math.abs(w.x - cx) < B + 100 && Math.abs(w.y - cy) < B + 100).map(w => [w.x | 0, w.y | 0, w.t, w.id]), cp: G.cp.filter(e => Math.abs(e[0] - cx) < B && Math.abs(e[1] - cy) < B), ag: ag > 0 ? 1 : 0, tl: Math.max(0, TIME - el) | 0, n: sn.filter(s => s.alive).length };
   };
   return G;
 }

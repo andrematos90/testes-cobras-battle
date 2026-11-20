@@ -77,21 +77,21 @@ function Controls({ lob, send }) {
 
 const MODES = {
   time: { t: "⏱ Por tempo (10 min)", d: "Sem corações: quem morre renasce pequena, sem limite (bots também). Acaba quando fecha os 10 minutos e vale o tamanho de cada cobra nesse momento." },
-  elim: { t: "💀 Eliminação (sem tempo)", d: "Sem relógio. Cada jogador tem 3 corações; zerou, está fora. Bots não renascem. Ganha o último jogador vivo." },
+  elim: { t: "💀 Eliminação (10 min)", d: "Cada jogador tem 3 corações; zerou, está fora. Bots não renascem. Se sobrar só 1 jogador vivo, ele vence; se os 10 minutos acabarem com mais de uma cobra viva, vence a maior. O tamanho final de cada cobra é a soma de todas as vidas dela." },
 };
 // o primeiro a entrar no link escolhe o modo; os outros só veem qual foi escolhido
 function ModePick({ lob, send, open }) {
-  const m = lob.mode;
-  if (open && lob.host) return (   // só o admin (quem entrou primeiro no link) escolhe o modo
+  const tr = lob.terrain || "stone", m = lob.mode;
+  if (open && lob.host) return (   // o admin (quem entrou primeiro no link e ainda está online) escolhe o modo e o terreno do mapa
     <div className="mode">
       <p className="s">👑 Você é o admin: escolha o modo da partida</p>
       <div className="mbtns">{Object.entries(MODES).map(([k, v]) => <button key={k} className={"btn mb" + (m === k ? " on" : " g")} onClick={() => { sfx.click(); send({ t: "mode", m: k }); }}>{v.t}</button>)}</div>
       {m && <p className="s">{MODES[m].d}</p>}
       <p className="s">Terreno do mapa</p>
-      <div className="mbtns">{TERRAINS.map(([k, t]) => <button key={k} className={"btn mb" + ((lob.terrain || "stone") === k ? " on" : " g")} onClick={() => { sfx.click(); send({ t: "terrain", v: k }); }}>{t}</button>)}</div>
+      <div className="mbtns">{TERRAINS.map(([k, t]) => <button key={k} className={"btn mb" + (tr === k ? " on" : " g")} onClick={() => { sfx.click(); send({ t: "terrain", v: k }); }}>{t}</button>)}</div>
     </div>
   );
-  return <div className="mode"><p className="s">{m ? <><b>Modo: {MODES[m].t}</b><br />{MODES[m].d}</> : ""}<br />Terreno: <b>{(TERRAINS.find(x => x[0] === (lob.terrain || "stone")) || TERRAINS[0])[1]}</b><br />{open && "👑 Só o admin (quem entrou primeiro no link) pode trocar o modo e o terreno."}</p></div>;
+  return <div className="mode"><p className="s">{m ? <><b>Modo: {MODES[m].t}</b><br />{MODES[m].d}</> : ""}<br />Terreno: <b>{(TERRAINS.find(x => x[0] === tr) || TERRAINS[0])[1]}</b>{open && <><br />👑 Só o admin (quem entrou primeiro no link) escolhe o modo e o terreno.</>}</p></div>;
 }
 
 function Board({ sb }) {
@@ -116,7 +116,7 @@ function Lobby({ lob, send, muted, setMuted, notice, clearNotice }) {
       {lob.cd > 0 && <div id="cd" key={lob.cd}><small>A partida começa em</small>{lob.cd}</div>}
       <h1>🐍 Cobras.io online</h1>
       {notice && <div className="notice" onClick={clearNotice}>{notice}</div>}
-      <p className="s">{open ? "Escolha um retângulo livre, passe a cabeça e o corpo com as setas ‹ › (e digite um nome, se quiser) e clique em PRONTO. Assim que alguém clicar em PRONTO, a contagem de 5 segundos começa e a partida inicia; quem não estiver pronto entra depois pelo botão ENTRAR NA PARTIDA. As cobras não escolhidas viram bots. " : live ? (full ? "Partida em andamento e todas as cobras estão ocupadas. Aguarde alguém sair ou o fim da partida." : "Partida em andamento! Escolha um retângulo livre, escolha cabeça e corpo com as setas ‹ › e clique em ENTRAR NA PARTIDA.") : count ? "A partida já vai começar! Quem ainda não clicou em PRONTO pode clicar agora para entrar junto." : "Partida terminando... aguarde para entrar."}</p>
+      <p className="s">{open ? "Escolha um retângulo livre, passe a cabeça e o corpo com as setas ‹ › (e digite um nome, se quiser) e clique em PRONTO. Quando TODOS que estão online no link estiverem prontos, a contagem de 5 segundos começa e a partida inicia; quem entrar no link depois pode entrar na partida pelo botão ENTRAR NA PARTIDA. As cobras não escolhidas viram bots. " : live ? (full ? "Partida em andamento e todas as cobras estão ocupadas. Aguarde alguém sair ou o fim da partida." : "Partida em andamento! Escolha um retângulo livre, escolha cabeça e corpo com as setas ‹ › e clique em ENTRAR NA PARTIDA.") : count ? "A partida já vai começar! Quem ainda não clicou em PRONTO pode clicar agora para entrar junto." : "Partida terminando... aguarde para entrar."}</p>
       <ModePick lob={lob} send={send} open={open} />
       <Board sb={lob.sb} />
       <div className="cards">
@@ -143,7 +143,7 @@ function Lobby({ lob, send, muted, setMuted, notice, clearNotice }) {
       {fsOk() && <button className="btn g fsb" onClick={() => toggleFs()}>⛶ Tela cheia</button>}
       </div>
       {!fsOk() && /iPhone|iPod/.test(navigator.userAgent) && !navigator.standalone && <p className="s ios">📱 iPhone: toque em Compartilhar → "Adicionar à Tela de Início" e abra pelo ícone para jogar em tela cheia.</p>}
-      <p className="s">👥 Online agora: <b>{lob.on}</b> · Com cobra: {n} · Prontos: {nr}{lob.host ? " · 👑 Você é o admin" : lob.adm < 0 ? " · 👑 O admin ainda não escolheu cobra" : ""}</p>
+      <p className="s">👥 Online agora: <b>{lob.on}</b> · Com cobra: {n} · Prontos: {nr} de {lob.on}{lob.host ? " · 👑 Você é o admin" : lob.adm < 0 ? " · 👑 O admin ainda não escolheu cobra" : ""}</p>
       <p className="s">No lobby: ← → trocam o corpo e ↑ ↓ trocam a cabeça. Teclado no jogo: ← → (ou A D) giram a cobra enquanto seguradas; ↑ ↓ (ou W S) apontam para cima e para baixo, e junto com ← → fazem a diagonal. Acelerar: espaço, Shift ou clique. Mouse e dedo (joystick) também funcionam.</p>
     </div>
   );
@@ -230,9 +230,9 @@ export default function App() {
   return (
     <><VoiceBar /><div className="ov">
       <h1>🏆 Ranking final</h1>
-      {end.md === "elim"
+      {end.md === "elim" && !end.te
         ? <p className="sub">{rank[0].main ? `🏁 Último jogador vivo: ${rank[0].n}` : "💀 Todos os jogadores foram eliminados"}</p>
-        : <><p className="sub">Quem tem a maior cobra é {rank[0].n} com {rank[0].cm.toFixed(1)} cm</p>
+        : <><p className="sub">Quem tem a maior cobra é {rank[0].n} com {rank[0].cm.toFixed(1)} cm{end.md === "elim" ? " (soma das vidas)" : ""}</p>
           <p className="sub">Quem tem a menor cobra é {rank[rank.length - 1].n} com {rank[rank.length - 1].cm.toFixed(1)} cm</p></>}
       <Rank rank={rank} />
       <Board sb={end.sb} />
