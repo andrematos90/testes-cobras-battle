@@ -1,7 +1,7 @@
 import { WD, TIME, NS, NSEL, NH, HEAD_NAMES, BOT_NAMES, BOT_NAMES2, BOT_NAMES_EXTRA, LIVES, NB, CONDOMS, CONDOM_HITS, TAPER, DROP_V, INV_TIME, PILLS, PILL_STIFF, PILL_MAX_CM, PILL_BACK, TURN_R0, TURN_RK, EAT_PAD, MAX_DROPS, BODY_MAX, CARD_BACK, CARD_START_CM, CARD_SHRINK_SECS, CARD_GROW_TIERS, FOOD_HOT, FOOD_BG, FOOD_HOT_MOVE, CARD_SHRINK_TO, CARD_GROW_SECS, CARD_GROW_ACCEL, CARDS_POR_TIPO, CARD_BOOST_BELOW_CM, CARD_BOOST_TO_CM, CARD_BOOST_SECS, VIEW_SPAN } from "../shared/config.js";
 
 const BIG_FROM = 100, BIG_FULL = 200, BIG_BONUS = .5;   // aceleração das cobras grandes (cm de onde começa, cm onde chega ao máximo, bônus máximo = 50%)
-export function createGame(human, bodies = [], mode = "time", heads = [], pnames = []) {
+export function createGame(human, bodies = [], mode = "time", heads = [], pnames = [], guests = []) {
   const TM = mode === "time";   // "time": 10 min, renasce sem limite (bots também), vale o tamanho no fim | "elim": sem tempo, 3 vidas, bots não renascem, vence o último humano vivo
   let elimN = 0;   // quantos humanos já foram eliminados de vez (modo elim)
   const rnd = n => (Math.random() - .5) * n;
@@ -48,7 +48,7 @@ export function createGame(human, bodies = [], mode = "time", heads = [], pnames
     const x = rnd(WD * .6), y = rnd(WD * .6);
     const s = { i, sk: i < NSEL ? (bodies[i] ?? (i * 2) % NB) : Math.random() * NB | 0, nm: i < NSEL ? (human[i] && pnames[i] ? pnames[i] : HEAD_NAMES[HD[i]]) : BN[(i - NSEL) % BN.length],
       x, y, a: Math.random() * 6.28, ta: 0, cm: .1, segs: [],
-      bot: !(i < NSEL && human[i]), lives: !TM && i < NSEL && human[i] ? LIVES : 0, hp: 0, gr: 0, ex: 0, inv: 0, stf: 0, best: 0, alive: true, t: 0, boost: false, cr: false, inp: { a: 0, b: false, k: false }, lx: x, ly: y, fin: 0, dd: 0, tr: [], t0: 0, fx: null, mk: 0, rr: 10, nn: 5, bx0: 0, bx1: 0, by0: 0, by1: 0 };
+      bot: !(i < NSEL && human[i]), guest: i < NSEL && !!human[i] && !!guests[i], lives: !TM && i < NSEL && human[i] ? LIVES : 0, hp: 0, gr: 0, ex: 0, inv: 0, stf: 0, best: 0, alive: true, t: 0, boost: false, cr: false, inp: { a: 0, b: false, k: false }, lx: x, ly: y, fin: 0, dd: 0, tr: [], t0: 0, fx: null, mk: 0, rr: 10, nn: 5, bx0: 0, bx1: 0, by0: 0, by1: 0 };
     for (let j = 0; j < 14; j++) s.segs.push({ x, y });
     return s;
   };
@@ -255,9 +255,9 @@ export function createGame(human, bodies = [], mode = "time", heads = [], pnames
   G.resume = i => { const s = sn[i]; if (s) { s.bot = false; s.inp = { a: s.a, b: false, k: false }; } };   // jogador que perdeu a conexão voltou: reassume a mesma cobra
   G.drop = i => { if (sn[i]) sn[i].bot = true; };
   // entrada no meio da partida: assume a cobra da vaga (viva = continua; morta = renasce pequena piscando)
-  G.join = (i, body, head, name) => {
+  G.join = (i, body, head, name, guest) => {
     const s = sn[i]; if (!s) return;
-    s.sk = body; G.sk[i] = body; if (head != null) { G.hd[i] = head; s.nm = G.names[i] = name || HEAD_NAMES[head]; } s.bot = false; s.lives = TM ? 0 : LIVES; s.inp = { a: s.a, b: false, k: false };
+    s.sk = body; G.sk[i] = body; if (head != null) { G.hd[i] = head; s.nm = G.names[i] = name || HEAD_NAMES[head]; } s.bot = false; s.guest = !!guest; s.lives = TM ? 0 : LIVES; s.inp = { a: s.a, b: false, k: false };
     if (!s.alive) respawn(s);
     // quem entrou no meio da partida não pode ficar igual a um bot: bots com a mesma cabeça ou o mesmo nome ganham outra(o)
     const ch = [], inUse = new Set(G.hd.slice(0, NSEL)), nmUse = new Set(sn.map(x => lc(x.nm)));
@@ -270,7 +270,7 @@ export function createGame(human, bodies = [], mode = "time", heads = [], pnames
     }
     return ch;
   };
-  G.lb = () => sn.map(s => [s.i, Math.round((s.alive ? s.cm : s.fin) * 10), s.alive ? 1 : 0, s.bot ? 0 : 1]);   // lista ao vivo: tamanho atual (igual ao da tela)
+  G.lb = () => sn.map(s => [s.i, Math.round((s.alive ? s.cm : s.fin) * 10), s.alive ? 1 : 0, s.bot || s.guest ? 0 : 1]);   // lista ao vivo (convidado aparece como bot: sem amarelo): tamanho atual (igual ao da tela)
   G.lbBest = () => sn.map(s => [s.i, Math.round(Math.max(s.best, s.alive ? s.cm : s.fin) * 10), s.alive ? 1 : 0]);   // ranking final: maior tamanho de qualquer vida
   G.result = () => {
     const all = [...sn];

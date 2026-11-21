@@ -58,7 +58,7 @@ export function onSnap(m) {
     if (h > 0) spark(x, y, "#ffffff", 14, 6, 26);
     else {   // estourou: a camisinha fica no chão com a ponta rasgada
       spark(x, y, "#ffffff", 40, 10, 50); spark(x, y, "#fbcfe8", 24, 8, 44); ST.shake = 6;
-      const s0 = ST.snakes.get(i); if (s0) { const im0 = i < NSEL ? getImg(ST.heads[i]) : null, hd0 = im0 && im0.sm ? 50 : R(s0.c) * 1.5; ST.shed.push({ ...condomGeo(s0.cur, s0.a, R(s0.c), hd0), t0: performance.now() }); }
+      const s0 = ST.snakes.get(i); if (s0) { const im0 = i < NSEL && ST.heads[i] >= 0 ? getImg(ST.heads[i]) : null, hd0 = im0 && im0.sm ? 50 : R(s0.c) * 1.5; ST.shed.push({ ...condomGeo(s0.cur, s0.a, R(s0.c), hd0), t0: performance.now() }); }
     }
     if (i === ST.you) sfx.pop();
   }
@@ -187,7 +187,7 @@ export function runGame(cv, { hud, sc, dd, fin, tail, bn, vg, send }) {
     const now2 = performance.now(), VB = [cx - hw, cx + hw, cy - hh, cy + hh];
     for (const [i, s] of ST.snakes) {
       const r = R(s.c), d = SK[ST.sk[i]].d, c = s.cur, n = c.length / 2;
-      const im = i < NSEL ? getImg(ST.heads[i]) : null, ph = im && im.sm, hd = ph ? 50 : r * 1.5;   // hd = raio da cabeça
+      const im = i < NSEL && ST.heads[i] >= 0 ? getImg(ST.heads[i]) : null, ph = im && im.sm, hd = ph ? 50 : r * 1.5;   // hd = raio da cabeça
       if (s.iv > 0 && (INV_TIME - s.iv / 100) % .8 >= .4) g.globalAlpha = .25;   // renasceu: pisca 3 vezes (fantasma)
       const tn = s.tn || n;
       if (!s.w || s.w.length !== c.length) s.w = new Float32Array(c.length);
@@ -198,7 +198,7 @@ export function runGame(cv, { hud, sc, dd, fin, tail, bn, vg, send }) {
       s.pa = s.sf ? 0 : 1;   // Tadala ativa: o pulsar para na hora e o corpo fica duro
       if (s.sf) { if (s.ft == null) s.ft = now2; } else s.ft = null;   // Tadala: congela também o relógio das cores (o arco-íris para de correr/brilhar)
       drawBody(g, w, n, tn, r, ST.sk[i], s.sf ? s.ft : now2, VB, s.pa);
-      if (i < NSEL) head(g, c[0], c[1], s.a, r, ST.sk[i], im); else sHead(g, c[0], c[1], s.a, r, SK[ST.sk[i]].c);
+      if (im) head(g, c[0], c[1], s.a, r, ST.sk[i], im); else sHead(g, c[0], c[1], s.a, r, SK[ST.sk[i]].c);
       if (s.sh > 0) condomSleeve(g, w, s.a, r, hd, s.sh, 1);
       g.globalAlpha = 1;
       g.fillStyle = "#fff"; g.font = "bold 14px system-ui";
