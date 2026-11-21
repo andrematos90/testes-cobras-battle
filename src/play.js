@@ -12,8 +12,8 @@ export const getImg = k => IMGS[k] || (IMGS[k] = (() => {
   m.onload = () => { const q = Math.min(m.naturalWidth, m.naturalHeight), c = document.createElement("canvas"); c.width = c.height = 256; const t = c.getContext("2d"); t.imageSmoothingQuality = "high"; t.drawImage(m, (m.naturalWidth - q) / 2, (m.naturalHeight - q) / 2, q, q, 0, 0, 256, 256); m.sm = c; };
   m.src = "/cobra" + (k + 1) + ".png"; return m;   // se a foto não existir (ainda), a cobra usa a cabeça padrão com olhos
 })());
-// imagens dos cards: card1.png (diminui) e card2.png (cresce) na pasta public (se faltar alguma, aparece um card genérico colorido com o número)
-export const CARD_IMGS = [0, 1].map(i => {
+// imagens dos cards: card1.png (diminui), card2.png (cresce) e card3.png (furacão, raríssimo) na pasta public (se faltar alguma, aparece um card genérico colorido com o número)
+export const CARD_IMGS = [0, 1, 2].map(i => {
   const m = new Image(); m.decoding = "async";
   m.onload = () => { const k = Math.min(1, 320 / Math.max(m.naturalWidth, m.naturalHeight)), c = document.createElement("canvas"); c.width = Math.max(1, m.naturalWidth * k | 0); c.height = Math.max(1, m.naturalHeight * k | 0); const t = c.getContext("2d"); t.imageSmoothingQuality = "high"; t.drawImage(m, 0, 0, c.width, c.height); m.sm = c; };
   m.src = "/card" + (i + 1) + ".png"; return m;
@@ -41,11 +41,16 @@ function boom(x, y, i) {
 const FALL = new Map();   // sorvetes caindo: posição -> instante em que apareceram
 const EMO = [];   // cada emoji da comida vira um sprite 1 vez (fillText de emoji com escala nova a cada quadro re-rasteriza a fonte colorida = lento)
 const emo = k => EMO[k] || (EMO[k] = (() => { const c = document.createElement("canvas"); c.width = c.height = 80; const t = c.getContext("2d"); t.font = "60px sans-serif"; t.textAlign = "center"; t.textBaseline = "middle"; t.fillText(FE[k], 40, 42); return c; })());
-const R = c => 10 + Math.min(c, 30) * 1.5 + Math.max(0, c - 30) * .3;
+const R = c => { const x = c / 4.76; return 10 + Math.min(x, 30) * 1.5 + Math.max(0, x - 30) * .3; };
 
 export function onSnap(m) {
   ST.x = m.x; ST.y = m.y; ST.al = m.al; ST.sp = m.sp; ST.hd = m.hd; ST.on = m.on; ST.tl = m.tl; ST.n = m.n; ST.m = m.m; ST.food = m.f;
   ST.ag = m.ag; ST.lf = m.lf; ST.hp = m.hp; ST.pw = m.pw; ST.pl = m.pl; ST.cd = m.cd || [];
+  if (m.hu >= 0) {   // furacão: aviso piscando rápido e tela tremendo (menos para quem pegou o card)
+    banner("🌪️ FURACÃO!", "#c4b5fd", 3000); if (bnEl) { bnEl.classList.add("blink"); setTimeout(() => bnEl && bnEl.classList.remove("blink"), 3000); }
+    if (m.hu !== ST.you) ST.hurUntil = performance.now() + 3000;
+  }
+  for (const [x, y, i] of m.hc || []) { spark(x, y, "#ffffff", 40, 10, 50); spark(x, y, "#c4b5fd", 24, 8, 44); if (i === ST.you) ST.shake = Math.max(ST.shake, 30); }   // bateu no canto
   for (const [x, y, i, t] of m.cp || []) {   // alguém pegou um card
     spark(x, y, CARD_COL[t] || "#fff", 30, 8, 40); spark(x, y, "#ffffff", 16, 6, 30);
     if (i === ST.you) sfx.pop();
@@ -242,6 +247,7 @@ export function runGame(cv, { hud, sc, dd, fin, tail, bn, vg, send }) {
     for (let k = PS.length - 1; k >= 0; k--) if (PS[k].l <= 0) PS.splice(k, 1);
     for (const r of RG) { r.r += 6 * f; r.l -= f; }
     for (let k = RG.length - 1; k >= 0; k--) if (RG[k].l <= 0) RG.splice(k, 1);
+    if (ST.hurUntil > performance.now()) ST.shake = Math.max(ST.shake, 12);
     ST.shake *= Math.pow(.9, f); if (ST.shake < .3) ST.shake = 0;
     for (const [x, y, i] of ST.hits.splice(0)) { const z = zm(); if (Math.abs(x - cam.x) > VW / 2 / z || Math.abs(y - cam.y) > VH / 2 / z) {   // batida fora da tela
       if (ST.lastC > ALERT_BIG_CM && now - lastAlert < ALERT_GAP) continue;   // cobra muito grande: no máximo 1 alerta a cada 8 s, mesmo com mais batidas

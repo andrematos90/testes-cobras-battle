@@ -4,7 +4,7 @@ export const TIME = 600;      // duração da partida em segundos (10 min)
 export const NS = 50;         // total de cobras: 10 selecionáveis (humanos) + 40 bots
 export const TICK = 40;       // ms por atualização do servidor (25 por segundo)
 // 15 cabeças (public/cobra1.png ... cobra15.png). Cada cabeça tem um nome padrão, que aparece em cima da cobra; o jogador pode digitar outro nome no lobby.
-export const HEAD_NAMES = ["André", "Allan", "Thiago", "Matheus", "Débora", "Fischer", "Samoso", "Ladrão", "Esbanja", "Homem com Down", "Bolsomito", "Virgem (Urach)", "Campopiano", "Caneta Azul", "Comedor de Loiras", "Luva de Pedreiro"]; // TROQUE AQUI os nomes (a ordem é a mesma de cobra1.png, cobra2.png...)
+export const HEAD_NAMES = ["André", "Allan", "Thiago", "Matheus", "Débora", "Fischer", "Samoso", "Ladrão", "Esbanja", "Homem com Down", "Bolsomito", "Virgem (Urach)", "Campopiano", "Caneta Azul", "Comedor de Loiras", "Luva de Pedreiro","Mama Khalifa", "Kid Bengala", "Inri Cristp", "Patixá", "Inês Brasil", "Dandara","Davi Brito","Capivara", "Bandido", "Menina da Bota", "HAHAHAH", "Fernanda"]; // TROQUE AQUI os nomes (a ordem é a mesma de cobra1.png, cobra2.png...)
 export const NH = HEAD_NAMES.length; // quantidade de cabeças
 export const NSEL = 10;           // quantos retângulos (jogadores simultâneos, máximo 10; no máximo NH, pois cada um usa uma cabeça diferente)
 export const HEAD_UNIQUE = true;  // true = duas pessoas não podem usar a mesma cabeça ao mesmo tempo
@@ -168,7 +168,7 @@ export const BOT_NAMES2 = [
 
 export const DROP_V = 4;     // valor das bolinhas verdes (comida normal vale 1 ou 2, então a verde vale o dobro da maior)
 export const LIVES = 3;      // quantas vezes cada cobra selecionável (controlada por pessoa) pode renascer
-export const BODY_NAMES = ["Coral", "Jararaca", "Preta", "Branca", "Arco-íris", "Vermelha", "Laranja", "Amarela", "Limão", "Verde", "Turquesa", "Azul", "Roxa", "Rosa", "Marrom", "Sucuri", "Piton", "Mamba", "Verde e Amarelo", "Verde Néon", "Quadriculado"]; // 21 corpos (desenhos em src/draw.js, mesma ordem)
+export const BODY_NAMES = ["Piton Verde", "Piton Branca", "Piton Marrom", "Piton Cinza", "Piton Azul", "Piton Vermelha", "Jequeana", "Verde e Preta", "Piton Dourada", "Losangos Preto e Branco", "Escamas Amarelas", "Laranjuda", "Branca", "Cobra Roupa de Vó", "Verde Preta e Amarela", "Coral"];
 export const NB = BODY_NAMES.length;
 export const CONDOMS = 3;     // quantos itens de camisinha existem no mapa
 export const CONDOM_HITS = 2;  // toques que a camisinha aguenta antes de estourar (1 toque protege, o 2º rasga)

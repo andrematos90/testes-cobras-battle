@@ -22,24 +22,11 @@ const SOLID = (h, s, l) => { const p = [h, s, l]; return { c: H(h, s, l), d: (g,
 const BANDS = (c, pal, pat) => ({ c, d: (g, x, y, r, j) => T(g, x, y, r, pal[pat[j % pat.length]]) });
 const CORAL = [[356, 85, 46], [0, 0, 8], [48, 30, 90]];            // vermelho, preto, branco-creme
 const JARA = [[44, 38, 50], [28, 52, 22], [48, 45, 68]];           // pardo, marrom-escuro, claro
+// TODOS os corpos agora são FOTO (public/pele1.png ... pele13.png). SK = só a cor de apoio de cada um (cabeça de bot, miniaturas, antes da foto carregar)
 const SK = [
-  BANDS("#d62828", CORAL, [0, 0, 0, 0, 0, 0, 1, 2, 2, 1]),            // Coral verdadeira: anel vermelho, preto, branco, preto
-  BANDS("#8a6d3b", JARA, [2, 1, 1, 1, 2, 0, 0, 0]),                    // Jararaca: manchas marrons em trapézio sobre fundo pardo
-  SOLID(0, 0, 12),                                                      // Preta
-  SOLID(0, 0, 93),                                                      // Branca
-  { c: H(300, 100, 65), anim: true, d: (g, x, y, r, j) => {            // Arco-íris que brilha e pulsa
-      const t = performance.now(), w = Math.sin(t / 170 - j * .35), h = (Math.round((j * 14 + t / 14) / 10) * 10) % 360, rr = r * (1 + .07 * w);
-      const ga = g.globalAlpha; g.globalAlpha = ga * (.16 + .08 * w); g.fillStyle = H(h, 100, 65); C(g, x, y, rr * 1.45); g.globalAlpha = ga;
-      T(g, x, y, rr, RB(h, w > .33 ? 2 : w > -.33 ? 1 : 0));
-    } },
-  SOLID(0, 80, 46), SOLID(26, 95, 52), SOLID(50, 95, 52), SOLID(78, 75, 46), SOLID(130, 60, 40),   // Vermelha, Laranja, Amarela, Limão, Verde
-  SOLID(176, 75, 40), SOLID(214, 80, 52), SOLID(268, 60, 52), SOLID(330, 80, 62), SOLID(25, 50, 32), // Turquesa, Azul, Roxa, Rosa, Marrom
-  SOLID(78, 38, 34),                                                                                  // Sucuri
-  BANDS("#b9892f", [[44, 62, 50], [26, 55, 20], [48, 45, 78]], [0, 0, 1, 1, 2, 1, 1, 0, 0, 0, 1, 1]),   // Piton
-  SOLID(60, 8, 31),                                                                                   // Mamba
-  BANDS("#6bbf2a", [[130, 70, 36], [52, 100, 52]], [0, 0, 0, 0, 1, 1, 1, 1]),                           // Verde e amarelo
-  SOLID(110, 100, 52),                                                                                // Verde néon
-  BANDS("#e5e7eb", [[0, 0, 93], [0, 0, 10]], [0, 0, 1, 1]),                                           // Quadriculado
+  SOLID(140, 8, 44), SOLID(0, 0, 69), SOLID(20, 10, 48), SOLID(40, 4, 52), SOLID(212, 22, 45), SOLID(355, 34, 47),   // pele1 a pele6: píton verde, branca, marrom, cinza, azul, vermelha
+  SOLID(358, 45, 29), SOLID(97, 34, 15), SOLID(28, 35, 35), SOLID(336, 2, 30), SOLID(58, 97, 15), SOLID(24, 88, 72), SOLID(0, 0, 82),   // pele7 a pele13
+  SOLID(25, 90, 50), SOLID(150, 60, 25), SOLID(355, 85, 46),   // pele14 a pele16: cobra colorida neon, esmeralda e ouro, coral vermelha
 ];
 function head(g,x,y,a,r,k,im,hf){
  const ph=im&&im.sm,hr=ph?(hf||50):r*1.5;
@@ -167,19 +154,22 @@ const WSPEED = .8;             // <1: a onda desliza devagar para trás (efeito 
 const PL = (h, s, l) => [H(h, s, Math.max(4, l - 22)), H(h, s, l), H(h, s, l + (100 - l) * .22), H(h, Math.max(0, s - 15), l + (100 - l) * .5)];   // [borda escura, cor, luz, brilho]
 const SOL = (h, s, l, bl = true) => ({ pal: [PL(h, s, l)], bl });
 export const SKIN = [
-  { pal: CORAL.map(q => PL(...q)), pat: [0, 0, 0, 0, 0, 0, 1, 2, 2, 1] },   // Coral
-  { pal: JARA.map(q => PL(...q)), pat: [2, 1, 1, 1, 2, 0, 0, 0] },          // Jararaca
-  SOL(0, 0, 12), SOL(0, 0, 93),                                             // Preta, Branca
-  { pal: Array.from({ length: 36 }, (_, q) => PL(q * 10, 100, 58)), rb: true },   // Arco-íris
-  SOL(0, 80, 46), SOL(26, 95, 52), SOL(50, 95, 52), SOL(78, 75, 46), SOL(130, 60, 40),
-  SOL(176, 75, 40), SOL(214, 80, 52), SOL(268, 60, 52), SOL(330, 80, 62), SOL(25, 50, 32),
-  { pal: [PL(78, 38, 34)], spot: { c: "rgba(14,20,6,.78)", rx: .62, ry: .5, step: 8 } },                  // Sucuri: verde-oliva com manchas redondas escuras
-  { pal: [PL(44, 62, 50), PL(26, 55, 22), PL(48, 45, 78)], pat: [0, 0, 1, 1, 2, 1, 1, 0, 0, 0, 1, 1], spot: { c: "rgba(45,22,6,.3)", rx: .55, ry: .36, step: 5 } },   // Piton: dourado com losangos marrons e creme
-  SOL(60, 8, 31),                                                                                       // Mamba (negra): cinza-oliva liso
-  { pal: [PL(130, 70, 36), PL(52, 100, 52)], pat: [0, 0, 0, 0, 1, 1, 1, 1] },                           // Verde e amarelo: anéis
-  { pal: [PL(110, 100, 52)], glow: "#39ff14" },                                                         // Verde néon (com brilho)
-  { pal: [PL(0, 0, 93), PL(0, 0, 10)], chk: true },                                                     // Quadriculado: xadrez preto e branco
+  { pal: [PL(140, 8, 44)], tex: 0 }, { pal: [PL(0, 0, 69)], tex: 1 }, { pal: [PL(20, 10, 48)], tex: 2 }, { pal: [PL(40, 4, 52)], tex: 3 }, { pal: [PL(212, 22, 45)], tex: 4 }, { pal: [PL(355, 34, 47)], tex: 5 },
+  { pal: [PL(358, 45, 29)], tex: 6 }, { pal: [PL(97, 34, 15)], tex: 7 }, { pal: [PL(28, 35, 35)], tex: 8 }, { pal: [PL(336, 2, 30)], tex: 9 }, { pal: [PL(58, 97, 15)], tex: 10 }, { pal: [PL(24, 88, 72)], tex: 11 }, { pal: [PL(0, 0, 82)], tex: 12 },
+  { pal: [PL(25, 90, 50)], tex: 13 }, { pal: [PL(150, 60, 25)], tex: 14 }, { pal: [PL(355, 85, 46)], tex: 15 },
 ];
+// textura de foto: a foto é espelhada para baixo (sem emenda) e vira um padrão; no corpo ela corre ao longo da cobra e acompanha as curvas
+const TEXS = [];
+function texPat(i) {
+  let t = TEXS[i]; if (t) return t.ok ? t : null;
+  t = TEXS[i] = { ok: false, p: null, w: 1 }; const im = new Image(); im.onload = () => {
+    const c = document.createElement("canvas"); c.width = im.naturalWidth; c.height = im.naturalHeight * 2; const x = c.getContext("2d");
+    x.drawImage(im, 0, 0); x.translate(0, c.height); x.scale(1, -1); x.drawImage(im, 0, 0);
+    t.p = x.createPattern(c, "repeat"); t.w = im.naturalWidth; t.ok = !!t.p;
+  }; im.src = "/pele" + (i + 1) + ".png"; return null;
+}
+const TM = typeof DOMMatrix !== "undefined" ? new DOMMatrix() : null;
+if (typeof document !== "undefined") for (let i = 0; i < 16; i++) texPat(i);   // baixa todas as fotos de corpo assim que o jogo abre (não aparece "pulando" de cor lisa para foto)
 // ondula os pontos do corpo (c = pontos já interpolados, tn = total de pontos do corpo, ph = fase). Escreve em w. A cabeça (j=0) não sai do lugar.
 export function wiggle(c, n, tn, r, ph, w) {
   if (!WIGGLE) { for (let j = 0; j < 2 * n; j++) w[j] = c[j]; return w; }
@@ -193,13 +183,13 @@ export function wiggle(c, n, tn, r, ph, w) {
   return w;
 }
 export const WAVE_STEP = (r, dist) => WSPEED * WK * dist / (1.5 * r);   // quanto a fase avança quando a cabeça anda "dist" px
-let SX = new Float32Array(2048), SY = new Float32Array(2048), SU = new Float32Array(2048), SR = new Float32Array(2048), SI = new Uint8Array(2048), SV = new Uint8Array(2048), TX = new Float32Array(2048), TY = new Float32Array(2048);
+let SS = new Float32Array(2048), SX = new Float32Array(2048), SY = new Float32Array(2048), SU = new Float32Array(2048), SR = new Float32Array(2048), SI = new Uint8Array(2048), SV = new Uint8Array(2048), TX = new Float32Array(2048), TY = new Float32Array(2048);
 const SUB = 4;   // amostras entre dois pontos do corpo
 // desenha o corpo. w = pontos (ondulados), n = qtde de pontos recebidos, tn = total do corpo, r = raio, k = tipo de corpo, t = tempo (ms), V = [xmin, xmax, ymin, ymax] da tela
 export function drawBody(g, w, n, tn, r, k, t, V, pa = 1) {   // pa = intensidade do pulsar (0 = corpo reto/duro, 1 = pulsando)
   if (n < 2) return;
   const sk = SKIN[k] || SKIN[0], pal = sk.pal, m = (n - 1) * SUB + 1;
-  if (m > SX.length) { const z = m * 2; SX = new Float32Array(z); SY = new Float32Array(z); SU = new Float32Array(z); SR = new Float32Array(z); SI = new Uint8Array(z); SV = new Uint8Array(z); TX = new Float32Array(z); TY = new Float32Array(z); }
+  if (m > SX.length) { const z = m * 2; SS = new Float32Array(z); SX = new Float32Array(z); SY = new Float32Array(z); SU = new Float32Array(z); SR = new Float32Array(z); SI = new Uint8Array(z); SV = new Uint8Array(z); TX = new Float32Array(z); TY = new Float32Array(z); }
   // 1) curva suave pelos pontos
   let q = 0;
   for (let j = 0; j < n - 1; j++) {
@@ -223,6 +213,7 @@ export function drawBody(g, w, n, tn, r, k, t, V, pa = 1) {   // pa = intensidad
     SR[i] = rr; SI[i] = ix; SV[i] = SX[i] > x0 - rr && SX[i] < x1 + rr && SY[i] > y0 - rr && SY[i] < y1 + rr ? 1 : 0;
     const a = i > 0 ? i - 1 : 0, b = i < m - 1 ? i + 1 : i, dx = SX[b] - SX[a], dy = SY[b] - SY[a], dl = Math.sqrt(dx * dx + dy * dy) || 1;
     TX[i] = dx / dl; TY[i] = dy / dl;
+    SS[i] = i > 0 ? SS[i - 1] + Math.hypot(SX[i] - SX[i - 1], SY[i] - SY[i - 1]) : 0;   // distância percorrida ao longo do corpo (para a textura de foto)
   }
   // 3) camadas, da ponta do rabo para a cabeça (a cabeça fica por cima)
   g.lineCap = "round"; g.lineJoin = "round";
@@ -231,14 +222,19 @@ export function drawBody(g, w, n, tn, r, k, t, V, pa = 1) {   // pa = intensidad
     for (let i = m - 2; i >= 0; i--) { if (!SV[i] && !SV[i + 1]) continue; g.lineWidth = SR[i] * 3.1; g.beginPath(); g.moveTo(SX[i], SY[i]); g.lineTo(SX[i + 1], SY[i + 1]); g.stroke(); }
     g.globalAlpha = ga;
   }
-  const WF = [1.1, 1, .6, .28], OX = [0, 0, -.12, -.2], OY = [0, 0, -.18, -.3];
+  const WF = [1.1, 1, .6, .28], OX = [0, 0, -.12, -.2], OY = [0, 0, -.18, -.3], tp = sk.tex != null && TM ? texPat(sk.tex) : null, tsc = tp ? 2 * r / tp.w : 1, stp = tp ? 2 : 1;
   for (let pass = 0; pass < 4; pass++) {
     const wf = WF[pass] * 2, ox = OX[pass], oy = OY[pass];
-    for (let i = m - 2; i >= 0; i--) {
-      if (!SV[i] && !SV[i + 1]) continue;
-      const a = SR[i], b = SR[i + 1];
-      g.strokeStyle = pal[SI[i]][pass]; g.lineWidth = a * wf;
-      g.beginPath(); g.moveTo(SX[i] + ox * a, SY[i] + oy * a); g.lineTo(SX[i + 1] + ox * b, SY[i + 1] + oy * b); g.stroke();
+    for (let i = m - 2; i >= 0; i -= stp) {   // fotos: um traço para cada 2 amostras (metade do trabalho; as pontas arredondadas escondem a emenda)
+      const j = Math.min(m - 1, i + stp);
+      if (!SV[i] && !SV[j]) continue;
+      const a = SR[i], b = SR[j];
+      if (tp) {   // pele de foto: contorno escuro, foto no meio (alinhada com o corpo) e brilhos leves por cima
+        if (pass === 1) { const nx = -TY[i], ny = TX[i]; TM.a = nx * tsc; TM.b = ny * tsc; TM.c = TX[i] * tsc; TM.d = TY[i] * tsc; TM.e = SX[i] - nx * tp.w * .5 * tsc - TX[i] * SS[i]; TM.f = SY[i] - ny * tp.w * .5 * tsc - TY[i] * SS[i]; tp.p.setTransform(TM); g.strokeStyle = tp.p; }
+        else g.strokeStyle = pass === 0 ? pal[0][0] : pass === 2 ? "rgba(255,255,255,.14)" : "rgba(255,255,255,.1)";
+      } else g.strokeStyle = pal[SI[i]][pass];
+      g.lineWidth = a * wf;
+      g.beginPath(); g.moveTo(SX[i] + ox * a, SY[i] + oy * a); g.lineTo(SX[j] + ox * b, SY[j] + oy * b); g.stroke();
     }
   }
   // 3b) quadriculado: quadrados pretos em duas faixas (esquerda/direita) alternando ao longo do corpo
@@ -256,7 +252,7 @@ export function drawBody(g, w, n, tn, r, k, t, V, pa = 1) {   // pa = intensidad
     g.fill();
   }
   // 4) escamas (arcos em fileiras alternadas)
-  if (r >= 9 && !sk.chk) {
+  if (r >= 9 && !sk.chk && sk.tex == null) {
     g.beginPath();
     for (let i = 2; i < m - 1; i += 2) {
       const rr = SR[i]; if (!SV[i] || rr < 5) continue;
@@ -284,7 +280,7 @@ export function drawBody(g, w, n, tn, r, k, t, V, pa = 1) {   // pa = intensidad
 
 // ================= CARDS FLUTUANTES =================
 // card girando (como uma moeda virando) e flutuando; img = imagem do card (se ainda não carregou/não existe, desenha um card genérico colorido com o número)
-export const CARD_COL = ["#38bdf8", "#4ade80"];   // brilho de cada tipo: 0 = diminui (azul), 1 = cresce (verde)
+export const CARD_COL = ["#38bdf8", "#4ade80", "#a78bfa"];   // brilho de cada tipo: 0 = diminui (azul), 1 = cresce (verde), 2 = furacão (roxo)
 function rrect(g, x, y, w, h, r) { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); }
 function cardIcon(g, x, y, sz, t, k, img, id = k) {   // k = tipo, id = número do card (cada um gira/flutua em fase diferente)
   const col = CARD_COL[k % CARD_COL.length], ph = id * 1.3;

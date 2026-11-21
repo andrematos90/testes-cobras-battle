@@ -5,7 +5,7 @@ import { HEAD_NAMES, NH, NSEL, NB, BODY_NAMES, TAPER, NAME_MAX } from "../shared
 import { sfx, startMusic, toggleMute } from "./sound.js";
 import { fsOk, toggleFs } from "./fullscreen.js";
 import * as voice from "./voice.jsx";
-import { VoiceBar } from "./voice.jsx";
+import { VoiceBar, VoiceIcon, VoicePanel } from "./voice.jsx";
 import { ST, getImg, resetStore, onSnap, onEvent, runGame } from "./play.js";
 
 // id do navegador (por aba): permite voltar para a mesma cobra se a conexão cair
@@ -15,6 +15,7 @@ const lsSet = (k, v) => { try { v == null ? localStorage.removeItem(k) : localSt
 
 // prévia grande da cobra (head < 0 = convidado: cabeça de bot, sem foto)
 function Preview({ hd, b, w = 560, h = 190, sc = 2.4 }) {
+  if (!SKIN[b]) b = 0;   // corpo inválido (ex.: salvo de uma versão antiga com mais corpos): usa o primeiro, em vez de travar a tela
   const r = useRef();
   useEffect(() => {
     const g = r.current.getContext("2d"), hx = w * .72;
@@ -23,7 +24,7 @@ function Preview({ hd, b, w = 560, h = 190, sc = 2.4 }) {
     const im = hd >= 0 ? getImg(hd) : null;
     if (hd >= 0) for (const d of [-1, 1]) getImg((hd + d + NH) % NH);   // baixa as vizinhas: ao passar com as setas a próxima aparece na hora
     const dr = () => { g.clearRect(0, 0, w, h); drawBody(g, pts, NP, NP, 7 * sc, b, performance.now(), V, 1); if (im) head(g, hx, h / 2, 0, 7 * sc, b, im, 31 * sc); else sHead(g, hx, h / 2, 0, 7 * sc, SK[b].c); };
-    dr(); const iv = SKIN[b].rb ? setInterval(dr, 60) : 0;
+    dr(); const iv = SKIN[b].rb || SKIN[b].tex != null ? setInterval(dr, 60) : 0;   // arco-íris anima; peles de foto repintam até a foto carregar
     if (im) im.addEventListener("load", dr); return () => { clearInterval(iv); im && im.removeEventListener("load", dr); };
   }, [hd, b]);
   return <canvas ref={r} width={w} height={h} className="pv" />;
@@ -33,18 +34,17 @@ const MODES = {
   time: { t: "⏱ Por tempo (10 min)", d: "Sem corações: quem morre renasce pequena, sem limite (bots também). Acaba quando fecha os 10 minutos e vale o tamanho de cada cobra nesse momento." },
   elim: { t: "💀 Eliminação (10 min)", d: "Cada jogador tem 3 corações; zerou, está fora. Bots não renascem. Se sobrar só 1 jogador vivo, ele vence; se os 10 minutos acabarem com mais de uma cobra viva, vence a maior. O tamanho final de cada cobra é a soma de todas as vidas dela." },
 };
-// o admin (online mais antigo) escolhe modo e terreno; os outros só veem
+// "Modo de Jogo:" e "Terreno:" em linhas com os botões; só o admin (online mais antigo) pode trocar, os outros veem a escolha
 function ModePick({ lob, send, open }) {
-  const tr = lob.terrain || "stone", m = lob.mode;
-  if (open && lob.host) return (
+  const tr = lob.terrain || "stone", m = lob.mode, can = open && lob.host;
+  return (
     <div className="mode">
-      <p className="s">👑 Você é o admin: escolha o modo e o terreno da partida</p>
-      <div className="mbtns">{Object.entries(MODES).map(([k, v]) => <button key={k} className={"btn mb" + (m === k ? " on" : " g")} onClick={() => { sfx.click(); send({ t: "mode", m: k }); }}>{v.t}</button>)}</div>
+      <div className="orow"><b>Modo de Jogo:</b>{Object.entries(MODES).map(([k, v]) => <button key={k} disabled={!can} className={"btn mb" + (m === k ? " on" : " g")} onClick={() => { sfx.click(); send({ t: "mode", m: k }); }}>{v.t}</button>)}</div>
       {m && <p className="s">{MODES[m].d}</p>}
-      <div className="mbtns">{TERRAINS.map(([k, t]) => <button key={k} className={"btn mb" + (tr === k ? " on" : " g")} onClick={() => { sfx.click(); send({ t: "terrain", v: k }); }}>{t}</button>)}</div>
+      <div className="orow"><b>Terreno:</b>{TERRAINS.map(([k, t]) => <button key={k} disabled={!can} className={"btn mb" + (tr === k ? " on" : " g")} onClick={() => { sfx.click(); send({ t: "terrain", v: k }); }}>{t}</button>)}</div>
+      <p className="s">{can ? "👑 Você é o admin: só você escolhe o modo e o terreno." : "👑 Só o admin (o mais antigo online) escolhe o modo e o terreno."}</p>
     </div>
   );
-  return <div className="mode"><p className="s">{m ? <><b>Modo: {MODES[m].t}</b><br /></> : ""}Terreno: <b>{(TERRAINS.find(x => x[0] === tr) || TERRAINS[0])[1]}</b>{open && <><br />👑 Só o admin (o mais antigo online) escolhe o modo e o terreno.</>}</p></div>;
 }
 
 const fmtT = s => s >= 3600 ? (s / 3600).toFixed(1).replace(".", ",") + " h" : Math.max(1, Math.round(s / 60)) + " min";
@@ -68,7 +68,7 @@ function DailyRank({ data, onClose, refresh }) {
               </tr>))}</tbody>
           </table></div>)}
         <div className="act"><button className="btn g" onClick={refresh}>↻ Atualizar</button><button className="btn" onClick={onClose}>Fechar</button></div>
-        <p className="s">Uma linha por personagem (só contas; convidados não entram): vitórias, partidas, maior tamanho, tamanho da sua cobra (soma dos tamanhos finais) e tempo jogado hoje. Zera à meia-noite (Brasília).</p>
+        <p className="s">Zera à meia-noite (Brasília).</p>
       </div>
     </div>
   );
@@ -83,8 +83,9 @@ function Board({ sb }) {
 function Lobby({ lob, send, muted, setMuted, notice, clearNotice, openDr, err, clearErr, logout }) {
   const guest = lob.kind === "guest", chars = (lob.u && lob.u.chars) || [], MAXC = 3;
   const [ci, setCi] = useState(guest ? 0 : Math.min((lob.u && lob.u.sel) || 0, chars.length));   // personagem escolhido (até 3 por conta; igual a chars.length = novo)
-  const c0 = chars[ci], [nm, setNm] = useState(c0 ? c0.nm : ""), [hd, setHd] = useState(c0 ? c0.head : Math.random() * NH | 0), [bd, setBd] = useState(guest ? (lsGet("cobras_gb") != null && Number.isInteger(+lsGet("cobras_gb")) ? +lsGet("cobras_gb") : lob.body) : (c0 ? c0.body : lob.body));
-  const pick = i => { sfx.click(); clearErr(); setCi(i); const c = chars[i]; setNm(c ? c.nm : ""); setHd(c ? c.head : Math.random() * NH | 0); setBd(c ? c.body : Math.random() * NB | 0); };
+  const okB = v => Number.isInteger(+v) && v !== null && v !== "" && +v >= 0 && +v < NB ? +v : 0;   // corpo salvo/recebido fora da lista vira 0
+  const c0 = chars[ci], [nm, setNm] = useState(c0 ? c0.nm : ""), [hd, setHd] = useState(c0 ? c0.head : Math.random() * NH | 0), [bd, setBd] = useState(guest ? okB(lsGet("cobras_gb") != null ? lsGet("cobras_gb") : lob.body) : okB(c0 ? c0.body : lob.body));
+  const pick = i => { sfx.click(); clearErr(); setCi(i); const c = chars[i]; setNm(c ? c.nm : ""); setHd(c ? c.head : Math.random() * NH | 0); setBd(c ? okB(c.body) : Math.random() * NB | 0); };
   const fn = useRef(); const goH = d => { sfx.click(); setHd(h => (h + d + NH) % NH); }, goB = d => { sfx.click(); setBd(b => { const n = (b + d + NB) % NB; if (guest) lsSet("cobras_gb", String(n)); return n; }); };
   fn.current = { goH, goB };
   useEffect(() => {
@@ -103,9 +104,16 @@ function Lobby({ lob, send, muted, setMuted, notice, clearNotice, openDr, err, c
   return (
     <div className="menu">
       {cdv > 0 && lob.pend !== undefined && (pend || lob.cd > 0) && <div id="cd" key={cdv}><small>{pend && lob.pc > 0 && !(lob.cd > 0) ? "Sua cobra entra em" : "A partida começa em"}</small>{cdv}</div>}
+      <div className="tbar">
+        <button className="ib" data-tip={muted ? "Ligar o som" : "Desligar o som"} onClick={() => setMuted(toggleMute())}>{muted ? "🔇" : "🔊"}</button>
+        <VoiceIcon />
+        <button className="ib" data-tip="Ranking do Dia" onClick={openDr}>📅</button>
+        {fsOk() && <button className="ib" data-tip="Tela cheia" onClick={() => toggleFs()}>⛶</button>}
+      </div>
+      <VoicePanel />
       <h1>🐍 Cobras.io online</h1>
       {notice && <div className="notice" onClick={clearNotice}>{notice}</div>}
-      <div className="big">
+      <div className={"big" + (pend ? " red" : "")}>
         <div className="bh">{guest ? "👤 Convidado" : "🐍 Monte sua cobra"}</div>
         {!guest && <div className="chs">{Array.from({ length: Math.min(MAXC, chars.length + 1) }, (_, i) => <button key={i} disabled={pend} className={"btn chb" + (ci === i ? " on" : " g")} onClick={() => pick(i)}>{chars[i] ? chars[i].nm : "＋ Novo personagem"}</button>)}</div>}
         <Preview hd={guest ? -1 : hd} b={bd} />
@@ -114,17 +122,14 @@ function Lobby({ lob, send, muted, setMuted, notice, clearNotice, openDr, err, c
         {!guest && <div className="ba"><button className="ab" disabled={pend} onClick={() => goH(-1)}>‹</button><span className="bn">Cabeça: {HEAD_NAMES[hd]}</span><button className="ab" disabled={pend} onClick={() => goH(1)}>›</button></div>}
         <div className="ba"><button className="ab" disabled={pend} onClick={() => goB(-1)}>‹</button><span className="bn">Corpo: {BODY_NAMES[bd]}</span><button className="ab" disabled={pend} onClick={() => goB(1)}>›</button></div>
         {guest && <p className="s">Convidado entra com cabeça de bot e nome sorteado, só escolhe o corpo e não aparece no Ranking do Dia. Entre com o Google para ter até 3 personagens salvos (nome, cabeça e corpo).</p>}
-        <button className="btn go" disabled={!can} onClick={go}>{pend ? "Cancelar" : full ? "Partida cheia" : st === "play" ? "ENTRAR NA PARTIDA" : "JOGAR"}</button>
       </div>
       <p className="s">{full ? "A partida está cheia (10 jogadores). Aguarde alguém sair: o botão libera sozinho." : msg}</p>
       <ModePick lob={lob} send={send} open={open} />
-      <Board sb={lob.sb} />
-      <div className="act">
-        <button className="btn g" onClick={() => setMuted(toggleMute())}>{muted ? "🔇" : "🔊"}</button>
-        <button className="btn g" onClick={openDr}>📅 Ranking do Dia</button>
-        {fsOk() && <button className="btn g fsb" onClick={() => toggleFs()}>⛶ Tela cheia</button>}
+      <div className="acts">
+        <button className="btn go" disabled={!can} onClick={go}>{pend ? "Cancelar" : full ? "Partida cheia" : st === "play" ? "ENTRAR NA PARTIDA" : "JOGAR"}</button>
         {!pend && <button className="btn g" onClick={logout}>{guest ? "← Voltar" : "Sair da conta"}</button>}
       </div>
+      <Board sb={lob.sb} />
       {!fsOk() && /iPhone|iPod/.test(navigator.userAgent) && !navigator.standalone && <p className="s ios">📱 iPhone: toque em Compartilhar → "Adicionar à Tela de Início" e abra pelo ícone para jogar em tela cheia.</p>}
       <p className="s">👥 Online agora: <b>{lob.on}</b> · Na partida: {lob.n} de {lob.mx}{lob.host ? " · 👑 Você é o admin" : ""}</p>
       <p className="s">← → trocam o corpo{guest ? "" : " e ↑ ↓ trocam a cabeça"}. No jogo: ← → (ou A D) giram a cobra; ↑ ↓ (ou W S) apontam para cima e para baixo. Acelerar: espaço, Shift ou clique. Mouse e dedo (joystick) também funcionam.</p>
@@ -174,9 +179,13 @@ function Game({ send, muted, setMuted }) {
       <div id="vg" ref={vg} />
       <div id="bn" ref={bn} />
       <div id="hud" ref={hud} />
-      <div id="mt" onClick={() => setMuted(toggleMute())}>{muted ? "🔇" : "🔊"}</div>
-      {fsOk() && <div id="fs" onClick={() => toggleFs()}>⛶</div>}
-      <div id="out" onClick={() => { sfx.click(); if (conf) send({ t: "leave" }); else setConf(true); }}>{conf ? "Confirmar saída?" : "Sair"}</div>
+      <div id="tl">
+        <div id="mt" onClick={() => setMuted(toggleMute())}>{muted ? "🔇" : "🔊"}</div>
+        <VoiceIcon />
+        {fsOk() && <div id="fs" onClick={() => toggleFs()}>⛶</div>}
+        <div id="out" onClick={() => { sfx.click(); if (conf) send({ t: "leave" }); else setConf(true); }}>{conf ? "Confirmar saída?" : "Sair"}</div>
+      </div>
+      <div id="gvp"><VoicePanel /></div>
       <div id="rot">↻ Gire o celular na horizontal</div>
       <div id="bt">⚡</div>
     </div>
@@ -204,7 +213,7 @@ export default function App() {
   const [scr, setScr] = useState("lobby"), [lob, setLob] = useState(null), [hi, setHi] = useState(null), [min, setMin] = useState(false), [end, setEnd] = useState(null), [muted, setMuted] = useState(false), [rc, setRc] = useState(0), [notice, setNotice] = useState(""), [err, setErr] = useState(""), [authErr, setAuthErr] = useState(""), [gk, setGk] = useState(0), [drOpen, setDrOpen] = useState(false), [drData, setDrData] = useState(null);
   const scrR = useRef("lobby"), rcR = useRef(false), kindR = useRef(null); scrR.current = scr;   // rc > 0: conexão caiu no meio da partida e estamos tentando voltar
   const wsr = useRef(null);
-  useEffect(() => { const t = setTimeout(() => setMin(true), 2200); return () => clearTimeout(t); }, []);
+  useEffect(() => { const t = setTimeout(() => setMin(true), 4000); return () => clearTimeout(t); }, []);
   useEffect(() => { const f = () => startMusic(); window.addEventListener("pointerdown", f, { once: true }); return () => window.removeEventListener("pointerdown", f); }, []);
   useEffect(() => { if (!err) return; const t = setTimeout(() => setErr(""), 7000); return () => clearTimeout(t); }, [err]);
   useEffect(() => {
@@ -219,7 +228,7 @@ export default function App() {
         else if (m.t === "hi") {
           setHi(m); if (lsGet("cobras_tok") && !m.has) lsSet("cobras_tok", null);   // sessão antiga/inválida
           if (rcR.current && !m.resumed) { rcR.current = false; setRc(0); setScr("lobby"); setNotice("📡 A conexão caiu e a partida acabou (ou o servidor reiniciou) enquanto você estava fora. Clique em JOGAR para entrar de novo."); }
-          if (!m.resumed && !m.has && kindR.current === "guest") ws.send(JSON.stringify({ t: "guest", b: +lsGet("cobras_gb") || 0 }));
+          if (!m.resumed && !m.has && kindR.current === "guest") ws.send(JSON.stringify({ t: "guest", b: (v => v >= 0 && v < NB ? v : 0)(+lsGet("cobras_gb") || 0) }));
         }
         else if (m.t === "auth") { if (m.ok) { lsSet("cobras_tok", m.tok); setAuthErr(""); startMusic(); } else setAuthErr(m.err || "Falha no login."); }
         else if (m.t === "err") setErr(m.m);
@@ -244,7 +253,7 @@ export default function App() {
   const drModal = drOpen && <DailyRank data={drData} onClose={() => setDrOpen(false)} refresh={() => send({ t: "dr" })} />;
   const logout = () => { sfx.click(); kindR.current = null; lsSet("cobras_tok", null); send({ t: "logout" }); };
 
-  if (scr === "play") return <><Game key={gk} send={send} muted={muted} setMuted={setMuted} /><VoiceBar />{rc > 0 && <div className="rcn"><div><i>🔄</i> Conexão perdida</div><div>Reconectando… (tentativa {rc})</div><small>Sua cobra continua jogando sozinha por até 45 segundos. Se o servidor estava dormindo, pode levar até 1 minuto para acordar. Não feche esta página.</small></div>}</>;
+  if (scr === "play") return <><Game key={gk} send={send} muted={muted} setMuted={setMuted} />{rc > 0 && <div className="rcn"><div><i>🔄</i> Conexão perdida</div><div>Reconectando… (tentativa {rc})</div><small>Sua cobra continua jogando sozinha por até 45 segundos. Se o servidor estava dormindo, pode levar até 1 minuto para acordar. Não feche esta página.</small></div>}</>;
   if (scr === "end" && end) {
     const rank = end.l.map(([i, c]) => ({ n: ST.names[i], cm: c / 10, main: i < NSEL, me: i === ST.you }));
     return (
@@ -262,6 +271,6 @@ export default function App() {
     );
   }
   if (!hi || !lob || !min) return <Splash wait={min} />;
-  if (!lob.kind) return <><Login cid={hi.cid} dev={hi.dev} send={send} authErr={authErr} onGuest={() => { sfx.click(); startMusic(); kindR.current = "guest"; send({ t: "guest", b: +lsGet("cobras_gb") || 0 }); }} onGoogle={cred => { startMusic(); send({ t: "auth", cred }); }} /></>;
-  return <><Lobby key={lob.kind} lob={lob} send={send} muted={muted} setMuted={setMuted} notice={notice} clearNotice={() => setNotice("")} openDr={openDr} err={err} clearErr={() => setErr("")} logout={logout} /><VoiceBar />{drModal}</>;
+  if (!lob.kind) return <><Login cid={hi.cid} dev={hi.dev} send={send} authErr={authErr} onGuest={() => { sfx.click(); startMusic(); kindR.current = "guest"; send({ t: "guest", b: (v => v >= 0 && v < NB ? v : 0)(+lsGet("cobras_gb") || 0) }); }} onGoogle={cred => { startMusic(); send({ t: "auth", cred }); }} /></>;
+  return <><Lobby key={lob.kind} lob={lob} send={send} muted={muted} setMuted={setMuted} notice={notice} clearNotice={() => setNotice("")} openDr={openDr} err={err} clearErr={() => setErr("")} logout={logout} />{drModal}</>;
 }

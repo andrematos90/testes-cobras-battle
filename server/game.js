@@ -1,11 +1,14 @@
 import { WD, TIME, NS, NSEL, NH, HEAD_NAMES, BOT_NAMES, BOT_NAMES2, BOT_NAMES_EXTRA, LIVES, NB, CONDOMS, CONDOM_HITS, TAPER, DROP_V, INV_TIME, PILLS, PILL_STIFF, PILL_MAX_CM, PILL_BACK, TURN_R0, TURN_RK, EAT_PAD, MAX_DROPS, BODY_MAX, CARD_BACK, CARD_START_CM, CARD_SHRINK_SECS, CARD_GROW_TIERS, FOOD_HOT, FOOD_BG, FOOD_HOT_MOVE, CARD_SHRINK_TO, CARD_GROW_SECS, CARD_GROW_ACCEL, CARDS_POR_TIPO, CARD_BOOST_BELOW_CM, CARD_BOOST_TO_CM, CARD_BOOST_SECS, VIEW_SPAN } from "../shared/config.js";
 
+// card 3 (furacão): chance de a partida ter furacão, quantos cards no máximo (sorteia de 1 até HUR_MAX, cada um num momento diferente), janela de tempo em que aparecem (s), tempo de voo, tempo total sem controle, fração do tamanho que sobra ao bater no canto
+const HUR_TESTE = false;   // true = MODO TESTE: 8 cards de furacão desde o começo de TODA partida (voltam 15 s depois de pegos). Mude para false para voltar ao normal (30% das partidas, 1 a 3 cards)
+const HUR_CHANCE = .30, HUR_MAX = 3, HUR_AT = [60, 540], HUR_FLY = 2.5, HUR_STUN = 3, HUR_KEEP = .2;
 const BIG_FROM = 100, BIG_FULL = 200, BIG_BONUS = .5;   // aceleração das cobras grandes (cm de onde começa, cm onde chega ao máximo, bônus máximo = 50%)
 export function createGame(human, bodies = [], mode = "time", heads = [], pnames = [], guests = []) {
   const TM = mode === "time";   // "time": 10 min, renasce sem limite (bots também), vale o tamanho no fim | "elim": sem tempo, 3 vidas, bots não renascem, vence o último humano vivo
   let elimN = 0;   // quantos humanos já foram eliminados de vez (modo elim)
   const rnd = n => (Math.random() - .5) * n;
-  const R = s => 10 + Math.min(s.cm, 30) * 1.5 + Math.max(0, s.cm - 30) * .3;
+    const R = s => { const x = s.cm / 4.76; return 10 + Math.min(x, 30) * 1.5 + Math.max(0, x - 30) * .3; };   // espessura cresce 4,76x mais devagar (a grossura que era de 42 cm agora é de ~200 cm)
   const L = s => Math.max(8, 14 + (s.cm * 10 | 0));
   // comida guardada em grade de células (rápido para buscar perto)
   const CS = 200, grid = new Map();
@@ -101,10 +104,11 @@ export function createGame(human, bodies = [], mode = "time", heads = [], pnames
   };
   const cards = []; for (let t = 0; t < 2; t++) for (let k = 0; k < CARDS_POR_TIPO; k++) cards.push(ncard(t, cards.length));
   let el = 0, ag = 0, evT = 20 + Math.random() * 30, fph = 30, ftg = 1800, cl = 12, dc = 0, mev = 70 + Math.random() * 40, rain = 0, rp = [], ices = [];   // mev = tempo até a próxima chuva de sorvete; rain = segundos restantes; rp = os 2 pontos do mapa onde ela cai; ices = sorvetes no chão (somem depois de um tempo)
-  const G = { sn, sk: sn.map(s => s.sk), hd: HD, names: sn.map(s => s.nm), over: false, dead: [], eats: [], pk: [], pop: [], hits: [], pp: [], cp: [] };
+  const c3s = []; const c3T = HUR_TESTE ? Array(8).fill(0) : Math.random() < HUR_CHANCE ? Array.from({ length: 1 + (Math.random() * HUR_MAX | 0) }, () => HUR_AT[0] + Math.random() * (HUR_AT[1] - HUR_AT[0])).sort((a, b) => a - b) : [];   // momentos em que cada card aparece (cada um em um momento diferente da partida)   // card3: aparece UMA vez, em qualquer lugar, no momento sorteado
+  const G = { hu: -1, hc: [], sn, sk: sn.map(s => s.sk), hd: HD, names: sn.map(s => s.nm), over: false, dead: [], eats: [], pk: [], pop: [], hits: [], pp: [], cp: [] };
 
   const die = s => {
-    s.alive = false; G.dead.push([s.x | 0, s.y | 0, s.i]); s.tot = (s.tot || 0) + s.cm; s.fin = s.cm;   // tot: soma dos tamanhos de cada vida já encerrada (ranking final do modo eliminação)
+    s.hv = null; s.alive = false; G.dead.push([s.x | 0, s.y | 0, s.i]); s.tot = (s.tot || 0) + s.cm; s.fin = s.cm;   // tot: soma dos tamanhos de cada vida já encerrada (ranking final do modo eliminação)
      s.best = Math.max(s.best, s.cm); s.hp = 0; s.gr = 0; s.ex = 0; s.inv = 0; s.stf = 0; s.fx = null; s.dd = dc++; s.lx = s.x; s.ly = s.y;
     // bolinhas verdes: no máximo MAX_DROPS por morte; o valor total é o mesmo de antes (cada bolinha vale mais quando a cobra era gigante)
     { const tot = Math.ceil(L(s) / 3), cnt = Math.min(tot, MAX_DROPS), vv = DROP_V * tot / cnt, sgd = s.segs, md = sgd.length;
@@ -115,13 +119,15 @@ export function createGame(human, bodies = [], mode = "time", heads = [], pnames
   };
   // renasce a cobra pequena (mesmo tamanho inicial de mk) em posição aleatória
   const respawn = s => {
-    s.x = s.lx = rnd(WD * .6); s.y = s.ly = rnd(WD * .6); s.a = Math.random() * 6.28; s.ta = s.a; s.cm = .1; s.boost = false; s.t = 0; s.hp = 0; s.gr = 0; s.ex = 0; s.inv = INV_TIME; s.stf = 0; s.fx = null; s.alive = true;   // inv: 3 piscadas sem poder morrer
+    s.x = s.lx = rnd(WD * .6); s.y = s.ly = rnd(WD * .6); s.a = Math.random() * 6.28; s.ta = s.a; s.cm = .1; s.boost = false; s.t = 0; s.hp = 0; s.gr = 0; s.ex = 0; s.inv = INV_TIME; s.stf = 0; s.fx = null; s.hv = null; s.alive = true;   // inv: 3 piscadas sem poder morrer
     s.segs = []; s.tr = []; s.t0 = 0; for (let j = 0; j < 14; j++) s.segs.push({ x: s.x, y: s.y });
   };
 
   G.step = dt => {
-    G.dead = []; G.eats = []; G.pk = []; G.pop = []; G.hits = []; G.pp = []; G.cp = [];
+    G.hu = -1; G.hc = []; G.dead = []; G.eats = []; G.pk = []; G.pop = []; G.hits = []; G.pp = []; G.cp = [];
     for (const w of cards) if (w.gone && el >= w.back) Object.assign(w, ncard(w.t, w.id));
+    while (c3T.length && el >= c3T[0]) { c3T.shift(); c3s.push({ x: rnd(WD - 800), y: rnd(WD - 800), t: 2, id: 9 + c3s.length, gone: false, back: 0 }); }   // cada card aparece uma vez, em qualquer lugar do mapa
+    if (HUR_TESTE) for (const w of c3s) if (w.gone && el >= w.back) Object.assign(w, { x: rnd(WD - 800), y: rnd(WD - 800), gone: false });
     for (const w of pills) if (w.gone && el >= w.back) Object.assign(w, npill());
     for (const f of drops) if (!f.gone && el + 1 - f.d > 60) { const c = grid.get(key(f.x, f.y)); if (c) { const j = c.indexOf(f); if (j >= 0) c.splice(j, 1); } nfood--; f.gone = true; }
     drops = drops.filter(f => !f.gone);
@@ -130,6 +136,15 @@ export function createGame(human, bodies = [], mode = "time", heads = [], pnames
     buildBodyGrid();
     for (const s of sn) {
       if (!s.alive) continue;
+      if (s.hv) {   // furacão: a cobra é levada até o canto sorteado, perde parte do tamanho ao bater e fica sem controle até acabar o tempo
+        const h = s.hv, sc = dt / 60; h.t -= sc; s.boost = false;
+        if (!h.hit) {
+          h.f -= sc; const dx = h.x - s.x, dy = h.y - s.y, d = Math.hypot(dx, dy);
+          if (h.f <= 0 || d < 40) { s.x = h.x; s.y = h.y; h.hit = true; s.cm = Math.max(.1, s.cm * HUR_KEEP); G.hc.push([s.x | 0, s.y | 0, s.i]); }
+          else { const k = Math.min(d, d * sc / h.f); s.a = Math.atan2(dy, dx); s.x += dx / d * k; s.y += dy / d * k; }
+        }
+        if (h.t <= 0) s.hv = null;
+      }
       if (s.bot) {
         s.t -= dt; s.cr = false; const m = WD / 2 - 250;
         if (Math.abs(s.x) > m || Math.abs(s.y) > m) s.ta = Math.atan2(-s.y, -s.x);
@@ -177,8 +192,7 @@ export function createGame(human, bodies = [], mode = "time", heads = [], pnames
       // raio mínimo da curva (px) cresce com o tamanho: cobra pequena faz curva fechada (pega a comida), a gigante faz curva larga. Giro por tick = passo normal / raio
       const spf = 1 + BIG_BONUS * Math.max(0, Math.min(1, (s.cm - BIG_FROM) / (BIG_FULL - BIG_FROM)));   // cobra grande é mais rápida: +0% até 100 cm, subindo até +50% aos 200 cm (e além)
       const mt = Math.min(1.2 * spf, 4.8 * dt * spf / (TURN_R0 + Math.max(0, r - 10) * TURN_RK)) * (!s.bot && s.inp.k ? 1.5 : 1) * (s.bot && ag > 0 ? 1.35 : 1);
-      s.a += Math.max(-mt, Math.min(mt, df));
-      const sp = (bo ? 8.2 : 4.8) * dt * spf; s.x += Math.cos(s.a) * sp; s.y += Math.sin(s.a) * sp;
+      if (!s.hv) { s.a += Math.max(-mt, Math.min(mt, df)); const sp = (bo ? 8.2 : 4.8) * dt * spf; s.x += Math.cos(s.a) * sp; s.y += Math.sin(s.a) * sp; }   // com furacão a posição já foi decidida acima
       const gap = r * .5, n = Math.max(8, Math.min(L(s), Math.floor(BODY_MAX / gap) + 1));   // BODY_MAX: comprimento máximo do corpo em px
       layout(s, gap, n);
       near(s.x, s.y, r + EAT_PAD + 4, c => {
@@ -195,6 +209,13 @@ export function createGame(human, bodies = [], mode = "time", heads = [], pnames
       }
       if (!s.bot) for (const w of pw) if (!w.gone && Math.abs(w.x - s.x) < 90 && Math.abs(w.y - s.y) < 90 && Math.hypot(w.x - s.x, w.y - s.y) < r + 60) { s.hp = CONDOM_HITS; s.gr = 0; w.gone = true; G.pk.push([w.x | 0, w.y | 0, s.i]); }
       if (!s.bot && s.cm <= PILL_MAX_CM) for (const w of pills) if (!w.gone && Math.abs(w.x - s.x) < 90 && Math.abs(w.y - s.y) < 90 && Math.hypot(w.x - s.x, w.y - s.y) < r + 60) { s.stf = PILL_STIFF; w.gone = true; w.back = el + PILL_BACK; G.pp.push([w.x | 0, w.y | 0, s.i]); }   // cobra maior que PILL_MAX_CM passa por cima sem efeito (a pílula fica)
+      for (const c3 of c3s) if (!s.bot && !c3.gone && !s.hv && Math.abs(c3.x - s.x) < 90 && Math.abs(c3.y - s.y) < 90 && Math.hypot(c3.x - s.x, c3.y - s.y) < r + 60) {   // card 3: quem pega fica normal; todas as outras são levadas a um ponto sorteado das laterais para cada uma
+        c3.gone = true; c3.back = el + 15; G.cp.push([c3.x | 0, c3.y | 0, s.i, 2]); G.hu = s.i;
+        { const vs = sn.filter(o => o.alive && o !== s), n = vs.length, m = WD / 2 - 90, ts = vs.map((_, k) => (k + Math.random()) / n);   // cada cobra vai para um ponto DIFERENTE das laterais do mapa (pontos espalhados pelo contorno todo, sorteados para cada uma)
+          for (let k = n - 1; k > 0; k--) { const j = Math.random() * (k + 1) | 0; [ts[k], ts[j]] = [ts[j], ts[k]]; }
+          vs.forEach((o, k) => { const q = ts[k] * 4, side = q | 0, u = (q - side) * 2 * m, [tx, ty] = side === 0 ? [-m + u, -m] : side === 1 ? [m, -m + u] : side === 2 ? [m - u, m] : [-m, m - u];
+            o.hv = { x: tx, y: ty, f: HUR_FLY, t: HUR_STUN, hit: false }; o.boost = false; }); }
+      }
       if (!s.bot) for (const w of cards) if (!w.gone && Math.abs(w.x - s.x) < 90 && Math.abs(w.y - s.y) < 90 && Math.hypot(w.x - s.x, w.y - s.y) < r + 60) {
         w.gone = true; w.back = el + CARD_BACK; G.cp.push([w.x | 0, w.y | 0, s.i, w.t]);
         if (w.t === 0 && s.cm * CARD_SHRINK_TO > CARD_START_CM && s.cm > CARD_START_CM) s.fx = { t: 0, to: s.cm * CARD_SHRINK_TO, rate: s.cm * (1 - CARD_SHRINK_TO) / CARD_SHRINK_SECS };   // card 1: encolhe para 40% do tamanho de agora
@@ -203,11 +224,11 @@ export function createGame(human, bodies = [], mode = "time", heads = [], pnames
       }
       if (Math.abs(s.x) > WD / 2 || Math.abs(s.y) > WD / 2) { die(s); continue; }
       let touch = false;
-      if (s.inv <= 0) {   // piscando = fantasma: não morre nem mata
+      if (s.inv <= 0 && !s.hv) {   // piscando = fantasma (levada pelo furacão também não colide): não morre nem mata
         const q = (r + rmax) * .8, st = ++stamp, ax0 = gc(s.x - q), ax1 = gc(s.x + q), ay0 = gc(s.y - q), ay1 = gc(s.y + q);
         col: for (let a = ax0; a <= ax1; a++) for (let b = ay0; b <= ay1; b++) for (let e = gHead[a * GN + b]; e >= 0; e = gNext[e]) {
           const v = gVal[e], o = sn[v & 63], k = v >> 6;
-          if (o === s || !o.alive || o.inv > 0 || o.mk === st) continue;
+          if (o === s || !o.alive || o.inv > 0 || o.hv || o.mk === st) continue;
           const sgo = o.segs; if (k >= sgo.length) continue;
           const qq = sgo[k], lk = (r + o.rr * TAPER(k / 3, o.nn)) * .8;
           if (Math.abs(qq.x - s.x) < lk && Math.abs(qq.y - s.y) < lk && Math.hypot(qq.x - s.x, qq.y - s.y) < lk) {
@@ -270,7 +291,7 @@ export function createGame(human, bodies = [], mode = "time", heads = [], pnames
     }
     return ch;
   };
-  G.lb = () => sn.map(s => [s.i, Math.round((s.alive ? s.cm : s.fin) * 10), s.alive ? 1 : 0, s.bot || s.guest ? 0 : 1]);   // lista ao vivo (convidado aparece como bot: sem amarelo): tamanho atual (igual ao da tela)
+  G.lb = () => sn.map(s => [s.i, Math.round((s.alive ? s.cm : s.fin) * 10), s.alive ? 1 : 0, s.bot ? 0 : 1]);   // lista ao vivo (convidado aparece como bot: sem amarelo): tamanho atual (igual ao da tela)
   G.lbBest = () => sn.map(s => [s.i, Math.round(Math.max(s.best, s.alive ? s.cm : s.fin) * 10), s.alive ? 1 : 0]);   // ranking final: maior tamanho de qualquer vida
   G.result = () => {
     const all = [...sn];
@@ -312,7 +333,7 @@ export function createGame(human, bodies = [], mode = "time", heads = [], pnames
     const f = []; near(cx, cy, B, c => { for (const o of c) if (Math.abs(o.x - cx) < B && Math.abs(o.y - cy) < B) f.push(o.x | 0, o.y | 0, o.d ? 4 : o.e === 5 && el - o.t < 1 ? 6 : o.e); });   // 6 = sorvete recém-criado (o navegador o desenha caindo do céu)
     return { t: "s", x: cx | 0, y: cy | 0, al: p.alive ? 1 : 0, sp, hd: humanAlive(), ns, f, m: sn.slice(0, NSEL).filter(s => s.alive).map(s => [s.i, s.x | 0, s.y | 0]),
       ea: G.eats.filter(e => Math.abs(e[0] - cx) < B && Math.abs(e[1] - cy) < B), dx: G.dead.filter(e => Math.abs(e[0] - cx) < B && Math.abs(e[1] - cy) < B),
-      lf: TM ? -1 : p.lives, hp: p.hp, ht: G.hits.filter(h => h[0] === i).map(h => [h[2], h[3], h[1]]), pop: G.pop.filter(e => Math.abs(e[0] - cx) < B && Math.abs(e[1] - cy) < B), pw: pw.filter(w => !w.gone && Math.abs(w.x - cx) < B + 100 && Math.abs(w.y - cy) < B + 100).map(w => [w.x | 0, w.y | 0]), pl: pills.filter(w => !w.gone && Math.abs(w.x - cx) < B + 100 && Math.abs(w.y - cy) < B + 100).map(w => [w.x | 0, w.y | 0]), pp: G.pp.filter(e => Math.abs(e[0] - cx) < B && Math.abs(e[1] - cy) < B), pk: G.pk.filter(e => Math.abs(e[0] - cx) < B && Math.abs(e[1] - cy) < B), cd: cards.filter(w => !w.gone && Math.abs(w.x - cx) < B + 100 && Math.abs(w.y - cy) < B + 100).map(w => [w.x | 0, w.y | 0, w.t, w.id]), cp: G.cp.filter(e => Math.abs(e[0] - cx) < B && Math.abs(e[1] - cy) < B), ag: ag > 0 ? 1 : 0, tl: Math.max(0, TIME - el) | 0, n: sn.filter(s => s.alive).length };
+      lf: TM ? -1 : p.lives, hp: p.hp, ht: G.hits.filter(h => h[0] === i).map(h => [h[2], h[3], h[1]]), pop: G.pop.filter(e => Math.abs(e[0] - cx) < B && Math.abs(e[1] - cy) < B), pw: pw.filter(w => !w.gone && Math.abs(w.x - cx) < B + 100 && Math.abs(w.y - cy) < B + 100).map(w => [w.x | 0, w.y | 0]), pl: pills.filter(w => !w.gone && Math.abs(w.x - cx) < B + 100 && Math.abs(w.y - cy) < B + 100).map(w => [w.x | 0, w.y | 0]), pp: G.pp.filter(e => Math.abs(e[0] - cx) < B && Math.abs(e[1] - cy) < B), pk: G.pk.filter(e => Math.abs(e[0] - cx) < B && Math.abs(e[1] - cy) < B), cd: (c3s.length ? [...cards, ...c3s] : cards).filter(w => !w.gone && Math.abs(w.x - cx) < B + 100 && Math.abs(w.y - cy) < B + 100).map(w => [w.x | 0, w.y | 0, w.t, w.id]), hu: G.hu, hc: G.hc.filter(e => Math.abs(e[0] - cx) < B + 300 && Math.abs(e[1] - cy) < B + 300), cp: G.cp.filter(e => Math.abs(e[0] - cx) < B && Math.abs(e[1] - cy) < B), ag: ag > 0 ? 1 : 0, tl: Math.max(0, TIME - el) | 0, n: sn.filter(s => s.alive).length };
   };
   return G;
 }

@@ -123,3 +123,20 @@ export function VoiceBar() {
     </div>
   );
 }
+
+// versão só com ícones (tela de escolha, canto superior direito): o texto aparece ao passar o mouse
+const useV = () => useSyncExternalStore(f => { subs.add(f); return () => subs.delete(f); }, () => snap);
+export function VoiceIcon() {
+  const v = useV(), b = (e, fn) => { fn(); e.currentTarget.blur(); };
+  return !v.on
+    ? <button tabIndex={-1} className={"ib" + (v.talk ? " blink" : "")} data-tip="Entrar na conversa (voz)" onClick={e => b(e, join)}>🎤</button>
+    : <><button tabIndex={-1} className={"ib " + (v.muted ? "mu" : "live")} data-tip={v.muted ? "Microfone mudo (clique para ativar)" : "Microfone ligado (clique para silenciar)"} onClick={e => b(e, toggleMute)}>{v.muted ? "🔇" : "🎙️"}</button>
+      <button tabIndex={-1} className="ib" data-tip="Sair da conversa" onClick={e => b(e, leave)}>✖</button></>;
+}
+export function VoicePanel() {
+  const v = useV();
+  return (v.err || (v.on && v.list.length > 1)) ? <div className="vpanel">
+    {v.err && <div className="verr">{v.err}</div>}
+    {v.on && v.list.length > 1 && <div className="vl">{v.list.map(p => <div key={p.id} className={p.sp ? "sp" : ""}>{p.sp ? "🔊" : "·"} {p.nm}{p.st === "failed" ? " ⚠ sem conexão" : ""}</div>)}</div>}
+  </div> : null;
+}
