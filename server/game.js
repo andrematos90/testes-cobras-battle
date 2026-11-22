@@ -105,6 +105,19 @@ export function createGame(human, bodies = [], mode = "time", heads = [], pnames
   const cards = []; for (let t = 0; t < 2; t++) for (let k = 0; k < CARDS_POR_TIPO; k++) cards.push(ncard(t, cards.length));
   let el = 0, ag = 0, evT = 20 + Math.random() * 30, fph = 30, ftg = 1800, cl = 12, dc = 0, mev = 70 + Math.random() * 40, rain = 0, rp = [], ices = [];   // mev = tempo até a próxima chuva de sorvete; rain = segundos restantes; rp = os 2 pontos do mapa onde ela cai; ices = sorvetes no chão (somem depois de um tempo)
   const c3s = []; const c3T = HUR_TESTE ? Array(8).fill(0) : Math.random() < HUR_CHANCE ? Array.from({ length: 1 + (Math.random() * HUR_MAX | 0) }, () => HUR_AT[0] + Math.random() * (HUR_AT[1] - HUR_AT[0])).sort((a, b) => a - b) : [];   // momentos em que cada card aparece (cada um em um momento diferente da partida)   // card3: aparece UMA vez, em qualquer lugar, no momento sorteado
+
+    // nascimento longe dos jogadores humanos: sorteia até 40 pontos e usa o primeiro com folga de SPAWN_FAR px da cabeça e do corpo de qualquer humano vivo (se nenhum servir, o mais distante)
+  const SPAWN_FAR = 1800;
+  const spawnAt = me => {
+    let bx = 0, by = 0, bd = -1;
+    for (let t = 0; t < 40; t++) {
+      const x = rnd(WD * .6), y = rnd(WD * .6); let d = 1e9;
+      for (const h of sn) { if (h === me || h.bot || !h.alive) continue; d = Math.min(d, Math.hypot(h.x - x, h.y - y)); for (let k = 0; k < h.segs.length; k += 5) d = Math.min(d, Math.hypot(h.segs[k].x - x, h.segs[k].y - y)); }
+      if (d > bd) { bd = d; bx = x; by = y; } if (d >= SPAWN_FAR) break;
+    }
+    return [bx, by];
+  };
+  for (const s of sn) if (s.bot) { const [px, py] = spawnAt(s); s.x = s.lx = px; s.y = s.ly = py; for (const q of s.segs) { q.x = px; q.y = py; } }   // bots do começo da partida também nascem longe dos humanos
   const G = { hu: -1, hc: [], sn, sk: sn.map(s => s.sk), hd: HD, names: sn.map(s => s.nm), over: false, dead: [], eats: [], pk: [], pop: [], hits: [], pp: [], cp: [] };
 
   const die = s => {
@@ -119,7 +132,7 @@ export function createGame(human, bodies = [], mode = "time", heads = [], pnames
   };
   // renasce a cobra pequena (mesmo tamanho inicial de mk) em posição aleatória
   const respawn = s => {
-    s.x = s.lx = rnd(WD * .6); s.y = s.ly = rnd(WD * .6); s.a = Math.random() * 6.28; s.ta = s.a; s.cm = .1; s.boost = false; s.t = 0; s.hp = 0; s.gr = 0; s.ex = 0; s.inv = INV_TIME; s.stf = 0; s.fx = null; s.hv = null; s.alive = true;   // inv: 3 piscadas sem poder morrer
+    { const [px, py] = spawnAt(s); s.x = s.lx = px; s.y = s.ly = py; }; s.a = Math.random() * 6.28; s.ta = s.a; s.cm = .1; s.boost = false; s.t = 0; s.hp = 0; s.gr = 0; s.ex = 0; s.inv = INV_TIME; s.stf = 0; s.fx = null; s.hv = null; s.alive = true;   // inv: 3 piscadas sem poder morrer
     s.segs = []; s.tr = []; s.t0 = 0; for (let j = 0; j < 14; j++) s.segs.push({ x: s.x, y: s.y });
   };
 
@@ -193,7 +206,7 @@ export function createGame(human, bodies = [], mode = "time", heads = [], pnames
       const spf = 1 + BIG_BONUS * Math.max(0, Math.min(1, (s.cm - BIG_FROM) / (BIG_FULL - BIG_FROM)));   // cobra grande é mais rápida: +0% até 100 cm, subindo até +50% aos 200 cm (e além)
       const mt = Math.min(1.2 * spf, 4.8 * dt * spf / (TURN_R0 + Math.max(0, r - 10) * TURN_RK)) * (!s.bot && s.inp.k ? 1.5 : 1) * (s.bot && ag > 0 ? 1.35 : 1);
       if (!s.hv) { s.a += Math.max(-mt, Math.min(mt, df)); const sp = (bo ? 8.2 : 4.8) * dt * spf; s.x += Math.cos(s.a) * sp; s.y += Math.sin(s.a) * sp; }   // com furacão a posição já foi decidida acima
-      const gap = r * .5, n = Math.max(8, Math.min(L(s), Math.floor(BODY_MAX / gap) + 1));   // BODY_MAX: comprimento máximo do corpo em px
+      const gap = r * .5, n = Math.max(8, Math.min(L(s), Math.floor(Math.min(BODY_MAX, 4500 + 9 * s.cm) / gap) + 1));   // comprimento do corpo (px) cresce com o tamanho: 4500 + 9 px por cm, até BODY_MAX   // mesma quantidade de pontos de antes da cobra ficar fina (menos trabalho e menos dados na rede)  // mesma quantidade de pontos de antes da cobra ficar fina (menos trabalho e menos dados na rede)  // BODY_MAX: comprimento máximo do corpo em px
       layout(s, gap, n);
       near(s.x, s.y, r + EAT_PAD + 4, c => {
         for (let j = c.length - 1; j >= 0; j--) { const f = c[j];
