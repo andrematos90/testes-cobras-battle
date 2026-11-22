@@ -4,7 +4,8 @@ import { WD, TIME, NS, NSEL, NH, HEAD_NAMES, BOT_NAMES, BOT_NAMES2, BOT_NAMES_EX
 const HUR_TESTE = false;   // true = MODO TESTE: 8 cards de furacão desde o começo de TODA partida (voltam 15 s depois de pegos). Mude para false para voltar ao normal (30% das partidas, 1 a 3 cards)
 const HUR_CHANCE = .30, HUR_MAX = 3, HUR_AT = [60, 540], HUR_FLY = 2.5, HUR_STUN = 3, HUR_KEEP = .2;
 const BIG_FROM = 100, BIG_FULL = 200, BIG_BONUS = .5;   // aceleração das cobras grandes (cm de onde começa, cm onde chega ao máximo, bônus máximo = 50%)
-export function createGame(human, bodies = [], mode = "time", heads = [], pnames = [], guests = []) {
+export function createGame(human, bodies = [], mode = "time", heads = [], pnames = [], guests = [], teams = null) {
+  const TEAMON = !!teams;   // partida por equipe: teams[i] = 0 ou 1 (equipe de cada vaga); bots nunca têm equipe
   const TM = mode === "time";   // "time": 10 min, renasce sem limite (bots também), vale o tamanho no fim | "elim": sem tempo, 3 vidas, bots não renascem, vence o último humano vivo
   let elimN = 0;   // quantos humanos já foram eliminados de vez (modo elim)
   const rnd = n => (Math.random() - .5) * n;
@@ -51,11 +52,14 @@ export function createGame(human, bodies = [], mode = "time", heads = [], pnames
     const x = rnd(WD * .6), y = rnd(WD * .6);
     const s = { i, sk: i < NSEL ? (bodies[i] ?? (i * 2) % NB) : Math.random() * NB | 0, nm: i < NSEL ? (human[i] && pnames[i] ? pnames[i] : HEAD_NAMES[HD[i]]) : BN[(i - NSEL) % BN.length],
       x, y, a: Math.random() * 6.28, ta: 0, cm: .1, segs: [],
-      bot: !(i < NSEL && human[i]), guest: i < NSEL && !!human[i] && !!guests[i], lives: !TM && i < NSEL && human[i] ? LIVES : 0, hp: 0, gr: 0, ex: 0, inv: 0, stf: 0, best: 0, alive: true, t: 0, boost: false, cr: false, inp: { a: 0, b: false, k: false }, lx: x, ly: y, fin: 0, dd: 0, tr: [], t0: 0, fx: null, mk: 0, rr: 10, nn: 5, bx0: 0, bx1: 0, by0: 0, by1: 0 };
+      bot: !(i < NSEL && human[i]), guest: i < NSEL && !!human[i] && !!guests[i], team: TEAMON && i < NSEL && human[i] && teams[i] >= 0 ? teams[i] : -1, lives: !TM && i < NSEL && human[i] ? LIVES : 0, hp: 0, gr: 0, ex: 0, inv: 0, stf: 0, best: 0, alive: true, t: 0, boost: false, cr: false, inp: { a: 0, b: false, k: false }, lx: x, ly: y, fin: 0, dd: 0, tr: [], t0: 0, fx: null, mk: 0, rr: 10, nn: 5, bx0: 0, bx1: 0, by0: 0, by1: 0 };
     for (let j = 0; j < 14; j++) s.segs.push({ x, y });
     return s;
   };
   const sn = []; for (let i = 0; i < NS; i++) sn.push(mk(i));
+  const everT = new Set(sn.filter(s => s.team >= 0).map(s => s.team));   // equipes que já tiveram jogador nesta partida
+  const tsc = s => TM ? (s.alive ? s.cm : 0) : (s.tot || 0) + (s.alive ? s.cm : 0);   // pontos de uma cobra para a equipe: por tempo = tamanho atual; eliminação = soma das vidas
+  const tsum = () => { const a = [0, 0]; for (const s of sn) if (s.team >= 0) a[s.team] += tsc(s); return a; };
   const respawnQ = [];
   // CORPO = rastro da cabeça: a cabeça deixa uma trilha de pontos e cada segmento fica a uma distância fixa (gap) ao longo dela.
   // Assim o corpo INTEIRO acompanha a curva (antes cada segmento só andava quando o da frente esticava, e o rabo das cobras grandes ficava parado)
@@ -118,7 +122,7 @@ export function createGame(human, bodies = [], mode = "time", heads = [], pnames
     return [bx, by];
   };
   for (const s of sn) if (s.bot) { const [px, py] = spawnAt(s); s.x = s.lx = px; s.y = s.ly = py; for (const q of s.segs) { q.x = px; q.y = py; } }   // bots do começo da partida também nascem longe dos humanos
-  const G = { hu: -1, hc: [], sn, sk: sn.map(s => s.sk), hd: HD, names: sn.map(s => s.nm), over: false, dead: [], eats: [], pk: [], pop: [], hits: [], pp: [], cp: [] };
+  const G = { team: TEAMON, hu: -1, hc: [], sn, sk: sn.map(s => s.sk), hd: HD, names: sn.map(s => s.nm), over: false, dead: [], eats: [], pk: [], pop: [], hits: [], pp: [], cp: [] };
 
   const die = s => {
     s.hv = null; s.alive = false; G.dead.push([s.x | 0, s.y | 0, s.i]); s.tot = (s.tot || 0) + s.cm; s.fin = s.cm;   // tot: soma dos tamanhos de cada vida já encerrada (ranking final do modo eliminação)
@@ -224,7 +228,7 @@ export function createGame(human, bodies = [], mode = "time", heads = [], pnames
       if (!s.bot && s.cm <= PILL_MAX_CM) for (const w of pills) if (!w.gone && Math.abs(w.x - s.x) < 90 && Math.abs(w.y - s.y) < 90 && Math.hypot(w.x - s.x, w.y - s.y) < r + 60) { s.stf = PILL_STIFF; w.gone = true; w.back = el + PILL_BACK; G.pp.push([w.x | 0, w.y | 0, s.i]); }   // cobra maior que PILL_MAX_CM passa por cima sem efeito (a pílula fica)
       for (const c3 of c3s) if (!s.bot && !c3.gone && !s.hv && Math.abs(c3.x - s.x) < 90 && Math.abs(c3.y - s.y) < 90 && Math.hypot(c3.x - s.x, c3.y - s.y) < r + 60) {   // card 3: quem pega fica normal; todas as outras são levadas a um ponto sorteado das laterais para cada uma
         c3.gone = true; c3.back = el + 15; G.cp.push([c3.x | 0, c3.y | 0, s.i, 2]); G.hu = s.i;
-        { const vs = sn.filter(o => o.alive && o !== s), n = vs.length, m = WD / 2 - 90, ts = vs.map((_, k) => (k + Math.random()) / n);   // cada cobra vai para um ponto DIFERENTE das laterais do mapa (pontos espalhados pelo contorno todo, sorteados para cada uma)
+        { const vs = sn.filter(o => o.alive && o !== s && !(s.team >= 0 && o.team === s.team)), n = vs.length, m = WD / 2 - 90, ts = vs.map((_, k) => (k + Math.random()) / n);   // cada cobra vai para um ponto DIFERENTE das laterais do mapa (pontos espalhados pelo contorno todo, sorteados para cada uma)
           for (let k = n - 1; k > 0; k--) { const j = Math.random() * (k + 1) | 0; [ts[k], ts[j]] = [ts[j], ts[k]]; }
           vs.forEach((o, k) => { const q = ts[k] * 4, side = q | 0, u = (q - side) * 2 * m, [tx, ty] = side === 0 ? [-m + u, -m] : side === 1 ? [m, -m + u] : side === 2 ? [m - u, m] : [-m, m - u];
             o.hv = { x: tx, y: ty, f: HUR_FLY, t: HUR_STUN, hit: false }; o.boost = false; }); }
@@ -241,7 +245,7 @@ export function createGame(human, bodies = [], mode = "time", heads = [], pnames
         const q = (r + rmax) * .8, st = ++stamp, ax0 = gc(s.x - q), ax1 = gc(s.x + q), ay0 = gc(s.y - q), ay1 = gc(s.y + q);
         col: for (let a = ax0; a <= ax1; a++) for (let b = ay0; b <= ay1; b++) for (let e = gHead[a * GN + b]; e >= 0; e = gNext[e]) {
           const v = gVal[e], o = sn[v & 63], k = v >> 6;
-          if (o === s || !o.alive || o.inv > 0 || o.hv || o.mk === st) continue;
+          if (o === s || !o.alive || o.inv > 0 || o.hv || o.mk === st || (s.team >= 0 && o.team === s.team)) continue;   // mesma equipe: atravessa sem morrer
           const sgo = o.segs; if (k >= sgo.length) continue;
           const qq = sgo[k], lk = (r + o.rr * TAPER(k / 3, o.nn)) * .8;
           if (Math.abs(qq.x - s.x) < lk && Math.abs(qq.y - s.y) < lk && Math.hypot(qq.x - s.x, qq.y - s.y) < lk) {
@@ -282,15 +286,17 @@ export function createGame(human, bodies = [], mode = "time", heads = [], pnames
     if (nfood > ftg + 150) for (let q = 0; q < 8; q++) { const c = grid.get(key(rnd(WD - 100), rnd(WD - 100))); if (c && c.length && !c[0].d && c[0].e !== 5) { c[0].gone = true; c.shift(); nfood--; } }
     const al = sn.filter(s => s.alive);
     G.te = el >= TIME;   // tempo esgotado
-    G.over = force || G.te || (!TM && (humanAlive() === 0 || (humanAlive() === 1 && elimN >= 1)));   // elim: também tem 10 min; acaba antes se sobra só 1 humano vivo (ou nenhum)
+    G.ts = TEAMON ? tsum().map(v => Math.round(v * 10)) : null;   // placar ao vivo das equipes
+    G.over = force || G.te || (!TM && (humanAlive() === 0 || (TEAMON ? (teamsAlive() <= 1 && everT.size >= 2 && elimN >= 1) : (humanAlive() === 1 && elimN >= 1))));   // elim: também tem 10 min; acaba antes se sobra só 1 humano vivo (ou nenhum)
   };
 
   G.input = (i, a, b, k) => { const s = sn[i]; if (s) s.inp = { a, b, k }; };
   G.resume = i => { const s = sn[i]; if (s) { s.bot = false; s.inp = { a: s.a, b: false, k: false }; } };   // jogador que perdeu a conexão voltou: reassume a mesma cobra
-  G.drop = i => { if (sn[i]) sn[i].bot = true; };
+  G.drop = (i, clr) => { if (sn[i]) { sn[i].bot = true; if (clr) sn[i].team = -1; } };   // clr: saiu de vez (a cobra vira bot sem equipe); só caiu a conexão: mantém a equipe
   // entrada no meio da partida: assume a cobra da vaga (viva = continua; morta = renasce pequena piscando)
-  G.join = (i, body, head, name, guest) => {
+  G.join = (i, body, head, name, guest, team = -1) => {
     const s = sn[i]; if (!s) return;
+    s.team = TEAMON && team >= 0 ? team : -1; if (s.team >= 0) everT.add(s.team);
     s.sk = body; G.sk[i] = body; if (head != null) { G.hd[i] = head; s.nm = G.names[i] = name || HEAD_NAMES[head]; } s.bot = false; s.guest = !!guest; s.lives = TM ? 0 : LIVES; s.inp = { a: s.a, b: false, k: false };
     if (!s.alive) respawn(s);
     // quem entrou no meio da partida não pode ficar igual a um bot: bots com a mesma cabeça ou o mesmo nome ganham outra(o)
@@ -304,22 +310,33 @@ export function createGame(human, bodies = [], mode = "time", heads = [], pnames
     }
     return ch;
   };
-  G.lb = () => sn.map(s => [s.i, Math.round((s.alive ? s.cm : s.fin) * 10), s.alive ? 1 : 0, s.bot ? 0 : 1]);   // lista ao vivo (convidado aparece como bot: sem amarelo): tamanho atual (igual ao da tela)
+  G.lb = () => sn.map(s => [s.i, Math.round((s.alive ? s.cm : s.fin) * 10), s.alive ? 1 : 0, s.bot ? 0 : 1, s.team]);   // lista ao vivo (convidado aparece como bot: sem amarelo): tamanho atual (igual ao da tela)
   G.lbBest = () => sn.map(s => [s.i, Math.round(Math.max(s.best, s.alive ? s.cm : s.fin) * 10), s.alive ? 1 : 0]);   // ranking final: maior tamanho de qualquer vida
+  G.tms = () => sn.map(s => s.team);
+  // resultado das equipes: soma de cada uma; vence a maior soma (empate: a que tem a maior cobra individual). Eliminação sem tempo esgotado: vence a equipe que ficou viva
+  const teamResult = () => {
+    if (!TEAMON) return {};
+    const t = tsum(); let tw = -1;
+    if (!TM && !G.te && teamsAlive() === 1) tw = sn.find(s => !s.bot && s.i < NSEL && s.alive && s.team >= 0).team;
+    else if (t[0] !== t[1]) tw = t[0] > t[1] ? 0 : 1;
+    else { const b = [0, 0]; for (const s of sn) if (s.team >= 0) b[s.team] = Math.max(b[s.team], tsc(s)); tw = b[0] > b[1] ? 0 : b[1] > b[0] ? 1 : -1; }
+    return { teams: 1, ts: t.map(v => Math.round(v * 10)), tw };
+  };
   G.result = () => {
-    const all = [...sn];
+    const all = [...sn], T = teamResult();
     if (TM) {   // por tempo: ranking = tamanho que cada cobra tem quando o tempo fecha
       all.sort((a, b) => b.cm - a.cm);
-      return { l: all.map(s => [s.i, Math.round(s.cm * 10), 1]), w: all[0].i, tm: 1, md: mode };
+      return { l: all.map(s => [s.i, Math.round(s.cm * 10), 1]), w: all[0].i, tm: 1, md: mode, ...T };
     }
     // eliminação: o tamanho final de cada cobra é a SOMA de todas as vidas dela (as que já acabaram + a atual)
     const hum = s => !s.bot && s.i < NSEL, tot = s => (s.tot || 0) + (s.alive ? s.cm : 0), te = !!G.te;
     // tempo esgotado com mais de uma cobra viva: as vivas vêm primeiro, da maior soma para a menor; sem tempo (último humano vivo): humanos vivos primeiro, como antes
     all.sort((a, b) => a.alive !== b.alive ? (a.alive ? -1 : 1) : a.alive ? (te ? tot(b) - tot(a) : (hum(a) !== hum(b) ? (hum(a) ? -1 : 1) : tot(b) - tot(a))) : b.dd - a.dd);
-    return { l: all.map(s => [s.i, Math.round(tot(s) * 10), s.alive ? 1 : 0]), w: all[0].i, tm: 0, te: te ? 1 : 0, md: mode };
+    return { l: all.map(s => [s.i, Math.round(tot(s) * 10), s.alive ? 1 : 0]), w: all[0].i, tm: 0, te: te ? 1 : 0, md: mode, ...T };
   };
   const spec = {}; let force = false;
   const humanAlive = () => sn.filter(s => !s.bot && s.i < NSEL && s.alive).length;
+  const teamsAlive = () => new Set(sn.filter(s => !s.bot && s.i < NSEL && s.alive && s.team >= 0).map(s => s.team)).size;   // equipes que ainda têm jogador vivo
   G.finish = () => { if (humanAlive() > 0) return false; force = true; return true; };   // só encerra se TODOS os jogadores humanos já morreram
   G.snap = i => {
     const p = sn[i]; let sp = -1, tg = null;
@@ -346,7 +363,7 @@ export function createGame(human, bodies = [], mode = "time", heads = [], pnames
     const f = []; near(cx, cy, B, c => { for (const o of c) if (Math.abs(o.x - cx) < B && Math.abs(o.y - cy) < B) f.push(o.x | 0, o.y | 0, o.d ? 4 : o.e === 5 && el - o.t < 1 ? 6 : o.e); });   // 6 = sorvete recém-criado (o navegador o desenha caindo do céu)
     return { t: "s", x: cx | 0, y: cy | 0, al: p.alive ? 1 : 0, sp, hd: humanAlive(), ns, f, m: sn.slice(0, NSEL).filter(s => s.alive).map(s => [s.i, s.x | 0, s.y | 0]),
       ea: G.eats.filter(e => Math.abs(e[0] - cx) < B && Math.abs(e[1] - cy) < B), dx: G.dead.filter(e => Math.abs(e[0] - cx) < B && Math.abs(e[1] - cy) < B),
-      lf: TM ? -1 : p.lives, hp: p.hp, ht: G.hits.filter(h => h[0] === i).map(h => [h[2], h[3], h[1]]), pop: G.pop.filter(e => Math.abs(e[0] - cx) < B && Math.abs(e[1] - cy) < B), pw: pw.filter(w => !w.gone && Math.abs(w.x - cx) < B + 100 && Math.abs(w.y - cy) < B + 100).map(w => [w.x | 0, w.y | 0]), pl: pills.filter(w => !w.gone && Math.abs(w.x - cx) < B + 100 && Math.abs(w.y - cy) < B + 100).map(w => [w.x | 0, w.y | 0]), pp: G.pp.filter(e => Math.abs(e[0] - cx) < B && Math.abs(e[1] - cy) < B), pk: G.pk.filter(e => Math.abs(e[0] - cx) < B && Math.abs(e[1] - cy) < B), cd: (c3s.length ? [...cards, ...c3s] : cards).filter(w => !w.gone && Math.abs(w.x - cx) < B + 100 && Math.abs(w.y - cy) < B + 100).map(w => [w.x | 0, w.y | 0, w.t, w.id]), hu: G.hu, hc: G.hc.filter(e => Math.abs(e[0] - cx) < B + 300 && Math.abs(e[1] - cy) < B + 300), cp: G.cp.filter(e => Math.abs(e[0] - cx) < B && Math.abs(e[1] - cy) < B), ag: ag > 0 ? 1 : 0, tl: Math.max(0, TIME - el) | 0, n: sn.filter(s => s.alive).length };
+      lf: TM ? -1 : p.lives, ts: G.ts, hp: p.hp, ht: G.hits.filter(h => h[0] === i).map(h => [h[2], h[3], h[1]]), pop: G.pop.filter(e => Math.abs(e[0] - cx) < B && Math.abs(e[1] - cy) < B), pw: pw.filter(w => !w.gone && Math.abs(w.x - cx) < B + 100 && Math.abs(w.y - cy) < B + 100).map(w => [w.x | 0, w.y | 0]), pl: pills.filter(w => !w.gone && Math.abs(w.x - cx) < B + 100 && Math.abs(w.y - cy) < B + 100).map(w => [w.x | 0, w.y | 0]), pp: G.pp.filter(e => Math.abs(e[0] - cx) < B && Math.abs(e[1] - cy) < B), pk: G.pk.filter(e => Math.abs(e[0] - cx) < B && Math.abs(e[1] - cy) < B), cd: (c3s.length ? [...cards, ...c3s] : cards).filter(w => !w.gone && Math.abs(w.x - cx) < B + 100 && Math.abs(w.y - cy) < B + 100).map(w => [w.x | 0, w.y | 0, w.t, w.id]), hu: G.hu, hc: G.hc.filter(e => Math.abs(e[0] - cx) < B + 300 && Math.abs(e[1] - cy) < B + 300), cp: G.cp.filter(e => Math.abs(e[0] - cx) < B && Math.abs(e[1] - cy) < B), ag: ag > 0 ? 1 : 0, tl: Math.max(0, TIME - el) | 0, n: sn.filter(s => s.alive).length };
   };
   return G;
 }

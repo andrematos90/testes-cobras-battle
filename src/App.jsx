@@ -2,11 +2,12 @@ import React, { useState, useRef, useEffect } from "react";
 import { SK, SKIN, head, sHead, drawBody } from "./draw.js";
 import { TERRAINS } from "./terrain.js";
 import { HEAD_NAMES, NH, NSEL, NB, BODY_NAMES, TAPER, NAME_MAX } from "../shared/config.js";
+import { TEAMS } from "../shared/teams.js";
 import { sfx, startMusic, toggleMute } from "./sound.js";
 import { fsOk, toggleFs } from "./fullscreen.js";
 import * as voice from "./voice.jsx";
 import { VoiceBar, VoiceIcon, VoicePanel } from "./voice.jsx";
-import { ST, getImg, resetStore, onSnap, onEvent, runGame } from "./play.js";
+import { ST, getImg, resetStore, onSnap, onEvent, onPong, runGame } from "./play.js";
 
 // id do navegador (por aba): permite voltar para a mesma cobra se a conexão cair
 const RID = (() => { try { let r = sessionStorage.getItem("cobras_rid"); if (!r) { r = Math.random().toString(36).slice(2, 12) + Date.now().toString(36); sessionStorage.setItem("cobras_rid", r); } return r; } catch (e) { return Math.random().toString(36).slice(2, 14) + "xx"; } })();
@@ -41,6 +42,8 @@ function ModePick({ lob, send, open }) {
     <div className="mode">
       <div className="orow"><b>Modo de Jogo:</b>{Object.entries(MODES).map(([k, v]) => <button key={k} disabled={!can} className={"btn mb" + (m === k ? " on" : " g")} onClick={() => { sfx.click(); send({ t: "mode", m: k }); }}>{v.t}</button>)}</div>
       {m && <p className="s">{MODES[m].d}</p>}
+      <div className="orow"><b>Equipes:</b><label className={"cbx" + (can ? "" : " off")}><input type="checkbox" disabled={!can} checked={!!lob.teams} onChange={e => { sfx.click(); send({ t: "teams", v: e.target.checked }); }} /> Por equipe ({TEAMS[0].e} {TEAMS[0].n} × {TEAMS[1].e} {TEAMS[1].n})</label></div>
+      {lob.teams && <p className="s">Cada jogador é sorteado para uma equipe ao clicar em JOGAR. Cobras da mesma equipe se atravessam sem morrer. Vence a equipe com a maior soma de tamanho. Esta partida não conta vitórias no Ranking do Dia.</p>}
       <div className="orow"><b>Terreno:</b>{TERRAINS.map(([k, t]) => <button key={k} disabled={!can} className={"btn mb" + (tr === k ? " on" : " g")} onClick={() => { sfx.click(); send({ t: "terrain", v: k }); }}>{t}</button>)}</div>
       <p className="s">{can ? "👑 Você é o admin: só você escolhe o modo e o terreno." : "👑 Só o admin (o mais antigo online) escolhe o modo e o terreno."}</p>
     </div>
@@ -116,6 +119,7 @@ function Lobby({ lob, send, muted, setMuted, notice, clearNotice, openDr, err, c
       <div className={"big" + (pend ? " red" : "")}>
         <div className="bh">{guest ? "👤 Convidado" : "🐍 Monte sua cobra"}</div>
         {!guest && <div className="chs">{Array.from({ length: Math.min(MAXC, chars.length + 1) }, (_, i) => <button key={i} disabled={pend} className={"btn chb" + (ci === i ? " on" : " g")} onClick={() => pick(i)}>{chars[i] ? chars[i].nm : "＋ Novo personagem"}</button>)}</div>}
+        {lob.teams && <div className="tmb" style={lob.tm >= 0 ? { color: TEAMS[lob.tm].c, borderColor: TEAMS[lob.tm].c } : null}>{lob.tm >= 0 ? `Sua equipe: ${TEAMS[lob.tm].e} ${TEAMS[lob.tm].n}` : "Partida por equipe: a equipe é sorteada quando você clicar em JOGAR"}</div>}
         <Preview hd={guest ? -1 : hd} b={bd} />
         {!guest && <input className="nm big-nm" maxLength={NAME_MAX} value={nm} placeholder="Nome do personagem (único)" disabled={pend} onChange={e => setNm(e.target.value)} />}
         {err && <div className="err">{err}</div>}
@@ -200,7 +204,7 @@ function Rank({ rank }) {
         <div key={ci} className="tc">{c.map((r, n) => (
           <div key={n} className={"tr" + (r.me ? " me" : "")}>
             <span className="pos">{ci * 10 + n + 1}</span>
-            <span className="nm2">{r.main && <b className="ar">▶ </b>}{r.n}</span>
+            <span className="nm2" style={r.t >= 0 ? { color: TEAMS[r.t].c } : null}>{r.main && <b className="ar">▶ </b>}{r.n}</span>
             <span className="cm">{r.cm.toFixed(1)} cm</span>
           </div>))}
         </div>))}
@@ -237,6 +241,7 @@ export default function App() {
         else if (m.t === "vroster") voice.roster(m.p);
         else if (m.t === "vsig") voice.sig(m);
         else if (m.t === "vstat") voice.stat(m);
+        else if (m.t === "pong") onPong(m);
         else if (m.t === "ev") onEvent(m);
         else if (m.t === "s") onSnap(m);
         else if (m.t === "l") { ST.l = m.l; ST.lv++; }
@@ -255,11 +260,12 @@ export default function App() {
 
   if (scr === "play") return <><Game key={gk} send={send} muted={muted} setMuted={setMuted} />{rc > 0 && <div className="rcn"><div><i>🔄</i> Conexão perdida</div><div>Reconectando… (tentativa {rc})</div><small>Sua cobra continua jogando sozinha por até 45 segundos. Se o servidor estava dormindo, pode levar até 1 minuto para acordar. Não feche esta página.</small></div>}</>;
   if (scr === "end" && end) {
-    const rank = end.l.map(([i, c]) => ({ n: ST.names[i], cm: c / 10, main: i < NSEL, me: i === ST.you }));
+    const rank = end.l.map(([i, c]) => ({ n: ST.names[i], cm: c / 10, main: i < NSEL, me: i === ST.you, t: end.teams && ST.tm ? ST.tm[i] : -1 }));
     return (
       <><VoiceBar /><div className="ov">
         <h1>🏆 Ranking final</h1>
-        {end.md === "elim" && !end.te
+        {end.teams && <div className="tsb">{TEAMS.map((t, k) => <div key={k} className={end.tw === k ? "win" : ""} style={{ color: t.c, borderColor: t.c }}>{t.e} {t.n}: {(end.ts[k] / 10).toFixed(1)} cm{end.tw === k ? " 🏆" : ""}</div>)}</div>}
+        {end.teams ? <p className="sub">{end.tw < 0 ? "🤝 Empate entre as equipes!" : `${TEAMS[end.tw].e} Equipe ${TEAMS[end.tw].n} venceu!`}</p> : end.md === "elim" && !end.te
           ? <p className="sub">{rank[0].main ? `🏁 Último jogador vivo: ${rank[0].n}` : "💀 Todos os jogadores foram eliminados"}</p>
           : <><p className="sub">Quem tem a maior cobra é {rank[0].n} com {rank[0].cm.toFixed(1)} cm{end.md === "elim" ? " (soma das vidas)" : ""}</p>
             <p className="sub">Quem tem a menor cobra é {rank[rank.length - 1].n} com {rank[rank.length - 1].cm.toFixed(1)} cm</p></>}

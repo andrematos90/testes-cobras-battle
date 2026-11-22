@@ -2,7 +2,8 @@ import { SK, FE, C, head, sHead, esc, condomIcon, condomSleeve, condomGeo, condo
 import { CHAO_URL } from "./chaoData.js";
 import { makeTile } from "./terrain.js";
 import { sfx, playRabo } from "./sound.js";
-import { WD, NSEL, NH, LIVES, TAPER, TICK, INV_TIME, VIEW_SPAN } from "../shared/config.js";
+import { WD, NSEL, NH, LIVES, TAPER, TICK, INV_TIME, VIEW_SPAN, TURN_R0, TURN_RK } from "../shared/config.js";
+import { TEAMS } from "../shared/teams.js";
 
 // as fotos originais têm ~1250x1250 px (1 MB cada). Desenhar isso reduzido a cada quadro era pesado: ao carregar, guardamos uma miniatura quadrada 256x256 (m.sm) e só ela é usada no jogo
 // as cabeças são carregadas só quando alguém precisa delas (são 15 fotos grandes: no lobby carrega a que está sendo vista e as vizinhas; no jogo, só as dos jogadores)
@@ -20,7 +21,7 @@ export const CARD_IMGS = [0, 1, 2].map(i => {
 });
 export const ST = { snakes: new Map(), food: [], m: [], l: [], lv: 0 };
 export function resetStore(m) {
-  Object.assign(ST, { fl: {}, hm: 0, tr: m.tr || "stone", you: m.you, names: m.names, sk: m.sk, heads: m.heads, snakes: new Map(), food: [], m: [], l: [], lv: 0, x: 0, y: 0, al: 1, ag: 0, md: m.md, tl: 600, n: 50, lf: m.md === "elim" ? LIVES : -1, hp: 0, shed: [], pw: [], pl: [], hits: [], tails: [], P: null, kl: 0, pb: 2.2, jv: 0, la: performance.now(), lastC: 0, shake: 0, dead: false, drops: 0, tp: 0, te: 0 });
+  Object.assign(ST, { fl: {}, hm: 0, tr: m.tr || "stone", you: m.you, names: m.names, sk: m.sk, heads: m.heads, snakes: new Map(), food: [], m: [], l: [], lv: 0, x: 0, y: 0, al: 1, ag: 0, md: m.md, tl: 600, n: 50, lf: m.md === "elim" ? LIVES : -1, hp: 0, shed: [], pw: [], pl: [], hits: [], tails: [], P: null, kl: 0, pb: 2.2, jv: 0, la: performance.now(), lastC: 0, shake: 0, dead: false, drops: 0, tp: 0, te: 0, tm: m.tm || [], tmode: !!m.tmode, ts: null, lead: null, leadT: 0, mx: null, hurOff: 0 });
 }
 
 export const CHAO = new Image(); CHAO.src = CHAO_URL;
@@ -46,9 +47,15 @@ const R = c => { const x = c / 4.76; return 10 + Math.min(x, 30) * 1.5 + Math.ma
 export function onSnap(m) {
   ST.x = m.x; ST.y = m.y; ST.al = m.al; ST.sp = m.sp; ST.hd = m.hd; ST.on = m.on; ST.tl = m.tl; ST.n = m.n; ST.m = m.m; ST.food = m.f;
   ST.ag = m.ag; ST.lf = m.lf; ST.hp = m.hp; ST.pw = m.pw; ST.pl = m.pl; ST.cd = m.cd || [];
+  ST.ts = m.ts || null;   // modo por equipe: soma de cada equipe (cm x 10)
+  if (ST.ts) {   // aviso quando a outra equipe passa para a frente (só se a diferença for de pelo menos 3%, no máximo 1 aviso a cada 5 s)
+    const a = ST.ts[0], b = ST.ts[1], tot = a + b, c = a > b ? 0 : 1, nw = performance.now();
+    if (ST.lead == null) { if (tot > 20 && a !== b) ST.lead = c; }
+    else if (c !== ST.lead && Math.abs(a - b) > tot * .03 && nw - ST.leadT > 5000) { ST.lead = c; ST.leadT = nw; banner(TEAMS[c].e + " " + TEAMS[c].n + " assumiu a liderança!", TEAMS[c].c, 3000); }
+  }
   if (m.hu >= 0) {   // furacão: aviso piscando rápido e tela tremendo (menos para quem pegou o card)
     banner("🌪️ FURACÃO!", "#c4b5fd", 3000); if (bnEl) { bnEl.classList.add("blink"); setTimeout(() => bnEl && bnEl.classList.remove("blink"), 3000); }
-    if (m.hu !== ST.you) ST.hurUntil = performance.now() + 3000;
+    if (m.hu !== ST.you) { ST.hurUntil = performance.now() + 3000; if (!(ST.tm && ST.tm[ST.you] >= 0 && ST.tm[ST.you] === ST.tm[m.hu])) ST.hurOff = performance.now() + 6500; }   // quem é levado pelo furacão fica sem previsão (o servidor manda na cobra); colega de equipe de quem pegou não é afetado
   }
   for (const [x, y, i] of m.hc || []) { spark(x, y, "#ffffff", 40, 10, 50); spark(x, y, "#c4b5fd", 24, 8, 44); if (i === ST.you) ST.shake = Math.max(ST.shake, 30); }   // bateu no canto
   for (const [x, y, i, t] of m.cp || []) {   // alguém pegou um card
@@ -81,6 +88,7 @@ export function onSnap(m) {
     const e = { k: m.k, p: Float32Array.from(p) };
     if (!s) { s = { h: [e], cur: new Float32Array(e.p.length), w: new Float32Array(e.p.length), ph: 0 }; ST.snakes.set(i, s); }
     else { s.h.push(e); if (s.h.length > 14) s.h.shift(); }
+    if (i === ST.you) ST.mx = { k: m.k, x: p[0], y: p[1], a, cm: c / 10, arr: performance.now(), sf: sf || 0 };   // estado da minha cobra segundo o servidor (base da previsão)
     s.c = c / 10; s.a = a; s.sh = sh; s.iv = iv || 0; s.tn = tn || p.length / 2; s.sf = sf || 0;   // tn: total de pontos do corpo (o servidor manda só o trecho perto da tela)
   }
   for (const k of [...ST.snakes.keys()]) if (!seen.has(k)) ST.snakes.delete(k);
@@ -100,12 +108,43 @@ export function banner(h, col, ms = 3200) {
 }
 // aviso "fulano entrou/saiu da partida" (mesmo estilo do aviso de batida no rabo)
 export function onEvent(m) {
+  if (m.tm !== undefined) ST.tm[m.i] = m.tm;   // equipe de quem entrou (-1 = saiu de vez / sem equipe)
   if (m.sk != null) ST.sk[m.i] = m.sk;
   if (m.h != null) { ST.heads[m.i] = m.h; ST.names[m.i] = m.nm || ST.names[m.i]; }   // quem entrou traz a cabeça e o nome que escolheu
   if (m.k === "hd") return;   // troca silenciosa de cabeça/nome de um bot
   ST.tails.push({ h: `<span style="color:#4ade80">${esc(ST.names[m.i])}</span> ${m.k === "in" ? "entrou na partida" : m.k === "die" ? "broxou!" : "saiu da partida"}`, until: performance.now() + 3000 });
 }
 
+// bandeirinha da equipe: mastro fincado no pescoço (logo atrás da cabeça), sempre em pé na tela, com a bandeira ondulando
+function teamFlag(g, c, n, hd, r, col, t) {
+  let d = 0, k = 0; const tg = hd * .9;
+  while (k < n - 1 && d < tg) { d += Math.hypot(c[2 * k + 2] - c[2 * k], c[2 * k + 3] - c[2 * k + 1]); k++; }
+  const x = c[2 * k], y = c[2 * k + 1], H = 40 + r * 1.5, W = H * .8, h = H * .46, w1 = Math.sin(t / 170) * h * .16, w2 = Math.sin(t / 170 + 1.6) * h * .16;
+  g.save(); g.translate(x, y); g.lineCap = "round"; g.lineJoin = "round";
+  g.strokeStyle = "#111827"; g.lineWidth = 5; g.beginPath(); g.moveTo(0, 0); g.lineTo(0, -H); g.stroke();
+  g.strokeStyle = "#e5e7eb"; g.lineWidth = 2.4; g.beginPath(); g.moveTo(0, 0); g.lineTo(0, -H); g.stroke();
+  g.beginPath(); g.moveTo(1, -H); g.bezierCurveTo(W * .35, -H - h * .14 + w1, W * .65, -H + h * .14 + w2, W, -H + w1 * .6);
+  g.lineTo(W, -H + h + w1 * .6); g.bezierCurveTo(W * .65, -H + h + h * .14 + w2, W * .35, -H + h - h * .14 + w1, 1, -H + h); g.closePath();
+  g.fillStyle = col; g.fill(); g.lineWidth = 2.4; g.strokeStyle = "#fff"; g.stroke();
+  g.fillStyle = "#fde047"; g.beginPath(); g.arc(0, -H, 4, 0, 6.2832); g.fill();
+  g.restore();
+}
+// ---- previsão do movimento da própria cobra (esconde o atraso da internet) ----
+// O servidor manda a posição de uma cobra que reflete comandos enviados há ~1 ida e volta (RTT). Aqui refazemos, com as MESMAS regras de giro e velocidade do servidor,
+// o caminho da cabeça desde esse ponto até agora usando os comandos que o jogador deu nesse tempo. Assim a cabeça responde na hora; o servidor continua mandando em tudo (se discordar, a cabeça se corrige).
+const PREDICT = true;   // false = desliga a previsão (volta a mostrar só o que o servidor mandou)
+const TD = TICK / 16.667, BIG_FROM = 100, BIG_FULL = 200, BIG_BONUS = .5;   // mesmos valores do servidor (server/game.js)
+export function onPong(m) {   // resposta do ping: mede a ida e volta (suavizada; picos isolados são limitados)
+  if (typeof m.c !== "number") return;
+  const r = Math.min(800, Math.max(5, performance.now() - m.c));
+  ST.rtt = ST.rtt == null ? r : ST.rtt + (Math.min(r, ST.rtt * 1.6 + 40) - ST.rtt) * .15;
+}
+function simStep(p, ta, boost, k, f) {   // um tick do servidor (f = fração do tick)
+  const cm = p.cm, r = R(cm), spf = 1 + BIG_BONUS * Math.max(0, Math.min(1, (cm - BIG_FROM) / (BIG_FULL - BIG_FROM)));
+  const df = Math.atan2(Math.sin(ta - p.a), Math.cos(ta - p.a)), mt = Math.min(1.2 * spf * f, 4.8 * TD * f * spf / (TURN_R0 + Math.max(0, r - 10) * TURN_RK)) * (k ? 1.5 : 1);
+  p.a += Math.max(-mt, Math.min(mt, df));
+  const sp = (boost && cm > .4 ? 8.2 : 4.8) * TD * f * spf; p.x += Math.cos(p.a) * sp; p.y += Math.sin(p.a) * sp;
+}
 const RABO_SND_MAX_CM = 35, ALERT_BIG_CM = 120, ALERT_GAP = 8000;   // som do rabo só até 35 cm; acima de 120 cm os alertas visuais têm intervalo de 8 s
 
 export function runGame(cv, { hud, sc, dd, fin, tail, bn, vg, send }) {
@@ -143,7 +182,27 @@ export function runGame(cv, { hud, sc, dd, fin, tail, bn, vg, send }) {
   const W = window;
   W.addEventListener("resize", rs); W.addEventListener("pointermove", mv); W.addEventListener("pointerdown", pd); W.addEventListener("pointerup", pu);
   W.addEventListener("pointercancel", pu); W.addEventListener("keydown", kd); W.addEventListener("keyup", ku); W.addEventListener("blur", bl);
-  const si = setInterval(() => send({ t: "in", a: +inp.a.toFixed(2), b: inp.b, k: !!anyK() }), 33);
+  let lastSend = 0, sA = 0, sB = false, sK = false, fdt = .016;
+  const sendIn = () => { lastSend = performance.now(); sA = +inp.a.toFixed(2); sB = inp.b; sK = !!anyK(); send({ t: "in", a: sA, b: sB, k: sK }); };
+  const si = setInterval(sendIn, 33);   // além deste intervalo, o comando é enviado assim que muda (no máximo a cada 14 ms, ver loop)
+  const pingI = setInterval(() => send({ t: "ping", c: performance.now() }), 1000); send({ t: "ping", c: performance.now() });   // mede o RTT (usado pela previsão e pelo F3)
+  const inH = []; let ps = null;   // histórico dos comandos e posição suavizada da cabeça prevista
+  const inAt = u => { for (let q = inH.length - 1; q >= 0; q--) if (inH[q].t <= u) return inH[q]; return inH[0]; };
+  function predictMe(me, now) {
+    const mx = ST.mx;
+    if (!PREDICT || !mx || !ST.al || ST.rtt == null || !inH.length || mx.sf || ST.P == null || now - mx.arr > 600 || now < ST.hurOff) { ps = null; return null; }
+    const rtt = Math.min(500, ST.rtt), u0 = mx.arr - rtt, T = Math.max(0, now - u0), p = { x: mx.x, y: mx.y, a: mx.a, cm: mx.cm }, out = [];
+    for (let tt = 0; tt < T;) { const f = Math.min(TICK, T - tt) / TICK; tt += TICK; const e = inAt(u0 + Math.min(tt, T)); simStep(p, e.a, e.b, e.k, f); out.push(p.x, p.y); }
+    const last = inH[inH.length - 1], spd = (last.b && mx.cm > .4 ? 8.2 : 4.8) * TD / TICK * (1 + BIG_BONUS * Math.max(0, Math.min(1, (mx.cm - BIG_FROM) / (BIG_FULL - BIG_FROM)))), hz = T + Math.max(0, ST.kl - ST.P) * TICK;
+    if (Math.hypot(p.x - me.cur[0], p.y - me.cur[1]) > spd * hz * 1.4 + 120) { ps = null; return null; }   // longe demais do que o servidor mostra (renasceu, foi levada...): não prevê
+    if (!ps) ps = { x: p.x, y: p.y }; else { const k = 1 - Math.exp(-fdt / .025); ps.x += (p.x - ps.x) * k; ps.y += (p.y - ps.y) * k; if (Math.hypot(p.x - ps.x, p.y - ps.y) > 200) { ps.x = p.x; ps.y = p.y; } }
+    const buf = []; for (let q = me.h.length - 1; q >= 0; q--) { const e = me.h[q]; if (e.k <= ST.P) break; buf.push(e.p[0], e.p[1]); }   // cabeças dos snapshots que chegaram mas ainda não foram mostrados
+    const nO = out.length >> 1, nB = buf.length >> 1, pts = new Float32Array(2 * (nO + nB) + me.cur.length); let w = 0;
+    for (let q = nO - 1; q >= 0; q--) { pts[w++] = out[2 * q]; pts[w++] = out[2 * q + 1]; }
+    for (let q = 0; q < buf.length; q++) pts[w++] = buf[q];
+    pts.set(me.cur, w); pts[0] = ps.x; pts[1] = ps.y;
+    return { pts, extra: nO + nB, a: p.a };
+  }
   const bi = setInterval(() => { if (inp.b && ST.al) sfx.boost(); }, 140);
 
   function draw() {
@@ -158,7 +217,8 @@ export function runGame(cv, { hud, sc, dd, fin, tail, bn, vg, send }) {
       const c = s.cur; for (let k = 0; k < c.length; k++) c[k] = k < a0.length ? a0[k] + (a1[k] - a0[k]) * al : a1[k];
     }
     const spS = !me && ST.sp >= 0 ? ST.snakes.get(ST.sp) : null;   // morto: acompanha a maior cobra
-    if (me) { cam.x = me.cur[0]; cam.y = me.cur[1]; } else if (spS) { cam.x += (spS.cur[0] - cam.x) * .1; cam.y += (spS.cur[1] - cam.y) * .1; } else { cam.x += (ST.x - cam.x) * .1; cam.y += (ST.y - cam.y) * .1; }
+    const pr = me ? predictMe(me, performance.now()) : null;   // cabeça prevista (null = sem previsão: usa só o servidor)
+    if (me) { cam.x = pr ? pr.pts[0] : me.cur[0]; cam.y = pr ? pr.pts[1] : me.cur[1]; } else if (spS) { cam.x += (spS.cur[0] - cam.x) * .1; cam.y += (spS.cur[1] - cam.y) * .1; } else { cam.x += (ST.x - cam.x) * .1; cam.y += (ST.y - cam.y) * .1; }
     zk += (Math.min(1, Math.min(VW, VH) / VIEW_SPAN(me ? me.c : spS ? spS.c : 0) / zb()) - zk) * .04;   // afasta/aproxima a câmera suavemente conforme o tamanho da cobra que está sendo vista
     const z = zm(), hw = VW / 2 / z + 80, hh = VH / 2 / z + 80, cx = cam.x, cy = cam.y;
     g.setTransform(1, 0, 0, 1, 0, 0); g.fillStyle = "#0b1020"; g.fillRect(0, 0, VW, VH);
@@ -191,22 +251,25 @@ export function runGame(cv, { hud, sc, dd, fin, tail, bn, vg, send }) {
     g.textBaseline = "alphabetic";
     const now2 = performance.now(), VB = [cx - hw, cx + hw, cy - hh, cy + hh];
     for (const [i, s] of ST.snakes) {
-      const r = R(s.c), d = SK[ST.sk[i]].d, c = s.cur, n = c.length / 2;
+      const pq = pr && i === ST.you ? pr : null, r = R(s.c), d = SK[ST.sk[i]].d, c = pq ? pq.pts : s.cur, n = c.length / 2, ha = pq ? pq.a : s.a;   // pq: minha cobra com a cabeça prevista
       const im = i < NSEL && ST.heads[i] >= 0 ? getImg(ST.heads[i]) : null, ph = im && im.sm, hd = ph ? 50 : r * 1.5;   // hd = raio da cabeça
       if (s.iv > 0 && (INV_TIME - s.iv / 100) % .8 >= .4) g.globalAlpha = .25;   // renasceu: pisca 3 vezes (fantasma)
-      const tn = s.tn || n;
+      const tn = (s.tn || n) + (pq ? pq.extra : 0);
       if (!s.w || s.w.length !== c.length) s.w = new Float32Array(c.length);
       if (s.lx !== undefined) { const dd = Math.hypot(c[0] - s.lx, c[1] - s.ly); if (dd < 300) s.ph += WAVE_STEP(r, dd); }   // a onda anda conforme a cabeça anda (parou = não ondula)
       s.lx = c[0]; s.ly = c[1];
       const w = wiggle(c, n, tn, r, s.ph, s.w);   // ondulação de serpente (só visual)
-      if (s.sh > 0) condomSleeve(g, w, s.a, r, hd, s.sh, 0);
+      if (s.sh > 0) condomSleeve(g, w, ha, r, hd, s.sh, 0);
       s.pa = s.sf ? 0 : 1;   // Tadala ativa: o pulsar para na hora e o corpo fica duro
       if (s.sf) { if (s.ft == null) s.ft = now2; } else s.ft = null;   // Tadala: congela também o relógio das cores (o arco-íris para de correr/brilhar)
       drawBody(g, w, n, tn, r, ST.sk[i], s.sf ? s.ft : now2, VB, s.pa);
-      if (im) head(g, c[0], c[1], s.a, r, ST.sk[i], im); else sHead(g, c[0], c[1], s.a, r, SK[ST.sk[i]].c);
-      if (s.sh > 0) condomSleeve(g, w, s.a, r, hd, s.sh, 1);
+      if (im) head(g, c[0], c[1], ha, r, ST.sk[i], im); else sHead(g, c[0], c[1], ha, r, SK[ST.sk[i]].c);
+      const tmi = ST.tm && ST.tm[i] >= 0 ? ST.tm[i] : -1;
+      if (tmi >= 0) teamFlag(g, c, n, hd, r, TEAMS[tmi].c, now2);   // modo por equipe: bandeirinha entre a cabeça e o corpo
+      if (s.sh > 0) condomSleeve(g, w, ha, r, hd, s.sh, 1);
       g.globalAlpha = 1;
-      g.fillStyle = "#fff"; g.font = "bold 14px system-ui";
+      g.font = "bold 14px system-ui";
+      if (tmi >= 0) { g.lineWidth = 3; g.lineJoin = "round"; g.strokeStyle = "#000"; g.strokeText(ST.names[i], c[0], c[1] - hd - 6); g.fillStyle = TEAMS[tmi].c; } else g.fillStyle = "#fff";   // nome na cor da equipe
       g.fillText(ST.names[i], c[0], c[1] - hd - 6);
       if (i < NSEL && ST.heads[i] === 6) {   // cabeça cobra7.png: frase piscando em cima do nome
         if (((performance.now() / 450) | 0) % 2 === 0) { g.font = "bold 15px system-ui"; g.lineWidth = 4; g.lineJoin = "round"; g.strokeStyle = "#000"; g.fillStyle = "#fde047"; g.strokeText("Vai regular comida pro Down?", c[0], c[1] - hd - 26); g.fillText("Vai regular comida pro Down?", c[0], c[1] - hd - 26); }
@@ -222,10 +285,10 @@ export function runGame(cv, { hud, sc, dd, fin, tail, bn, vg, send }) {
     g.fillStyle = "#000a"; g.fillRect(mx, my, ms, ms); g.strokeStyle = "#fff8"; g.lineWidth = 2; g.strokeRect(mx, my, ms, ms);
     g.save(); g.beginPath(); g.rect(mx, my, ms, ms); g.clip();
     for (const [i, x, y] of ST.m) {
-      const s = ST.snakes.get(i), mine = i === ST.you; g.strokeStyle = SK[ST.sk[i]].c;
+      const s = ST.snakes.get(i), mine = i === ST.you, tcl = ST.tm && ST.tm[i] >= 0 ? TEAMS[ST.tm[i]].c : null; g.strokeStyle = tcl || SK[ST.sk[i]].c;   // minimapa: cobras de equipe na cor da equipe
       if (s) { g.lineCap = "round"; g.lineJoin = "round"; g.lineWidth = Math.max((mine ? 3 : 2) * u, R(s.c) * 2 * k); g.beginPath(); for (let j = 0; j < s.cur.length; j += 2) { const px = mx + M(s.cur[j]), py = my + M(s.cur[j + 1]); j ? g.lineTo(px, py) : g.moveTo(px, py); } g.stroke(); }
       const hx = mx + M(x), hy = my + M(y);
-      if (mine) { g.strokeStyle = "#fff"; g.lineWidth = 2 * u; g.beginPath(); g.arc(hx, hy, 8 * u, 0, 6.2832); g.stroke(); } else { g.fillStyle = SK[ST.sk[i]].c; C(g, hx, hy, 3.5 * u); }
+      if (mine) { g.strokeStyle = "#fff"; g.lineWidth = 2 * u; g.beginPath(); g.arc(hx, hy, 8 * u, 0, 6.2832); g.stroke(); } else { g.fillStyle = tcl || SK[ST.sk[i]].c; C(g, hx, hy, 3.5 * u); }
     }
     g.restore(); g.globalAlpha = 1;
     if (joy.on) { g.strokeStyle = "#fff6"; g.lineWidth = 3; g.beginPath(); g.arc(joy.x, joy.y, 50, 0, 6.2832); g.stroke(); g.fillStyle = "#fff8"; C(g, joy.x + joy.px, joy.y + joy.py, 22); }
@@ -238,6 +301,8 @@ export function runGame(cv, { hud, sc, dd, fin, tail, bn, vg, send }) {
     if (dy) { const t = Math.atan2(dy, dx), d = Math.atan2(Math.sin(t - inp.a), Math.cos(t - inp.a)), st = 6 * dts; inp.a += Math.max(-st, Math.min(st, d)); }
     else if (dx) inp.a += dx * 4 * dts;
     inp.a = Math.atan2(Math.sin(inp.a), Math.cos(inp.a));
+    fdt = dts; inH.push({ t: now, a: inp.a, b: inp.b, k: !!anyK() }); while (inH.length > 1 && inH[0].t < now - 2000) inH.shift();
+    if (now - lastSend >= 14 && (+inp.a.toFixed(2) !== sA || inp.b !== sB || !!anyK() !== sK)) sendIn();   // mudou o comando: manda na hora (em vez de esperar o próximo intervalo de 33 ms)
     if (ST.P != null) {   // cabeçote de reprodução: ~1 tick a cada 40 ms, acelera/desacelera até 50% para manter a folga (pb ticks) e nunca passa do snapshot mais novo
       const lead = ST.kl - ST.P;
       ST.P = lead > 10 ? ST.kl - ST.pb : Math.min(ST.kl, ST.P + dts * 1000 / TICK * (1 + Math.max(-.5, Math.min(.5, (lead - ST.pb) * .2))));
@@ -257,7 +322,7 @@ export function runGame(cv, { hud, sc, dd, fin, tail, bn, vg, send }) {
     const t0 = performance.now();
     try { draw(); } catch (e) { if (!loop.err) { loop.err = 1; console.error("erro ao desenhar:", e); } }   // um erro não pode congelar o jogo
     dms += (performance.now() - t0 - dms) * .1; fc++; if (now - fw >= 1000) { fps = fc * 1000 / (now - fw); fc = 0; fw = now; }
-    if (dbg) { g.setTransform(1, 0, 0, 1, 0, 0); g.fillStyle = "#000c"; g.fillRect(VW / 2 - 150, 4, 300, 22); g.fillStyle = "#4ade80"; g.font = "bold 13px monospace"; g.textAlign = "center"; g.fillText("FPS " + fps.toFixed(0) + " | desenho " + dms.toFixed(1) + " ms | jitter " + ST.jv.toFixed(1) + " ms", VW / 2, 19); }
+    if (dbg) { g.setTransform(1, 0, 0, 1, 0, 0); g.fillStyle = "#000c"; g.fillRect(VW / 2 - 215, 4, 430, 22); g.fillStyle = "#4ade80"; g.font = "bold 13px monospace"; g.textAlign = "center"; g.fillText("FPS " + fps.toFixed(0) + " | desenho " + dms.toFixed(1) + " ms | jitter " + ST.jv.toFixed(1) + " ms | ping " + (ST.rtt == null ? "-" : ST.rtt.toFixed(0)) + " ms", VW / 2, 19); }
     if (++fr % 10 === 0) {
       const tl = ST.tl;
       // avisos de tensão: reta final no modo por tempo; última vida e duelo final no modo eliminação (cada um aparece uma vez por partida)
@@ -268,7 +333,7 @@ export function runGame(cv, { hud, sc, dd, fin, tail, bn, vg, send }) {
       if (vc !== lastVg) { lastVg = vc; vg.className = vc; }
       if (ST.md === "elim") { ST.hm = Math.max(ST.hm, ST.hd || 0); if (ST.hd === 2 && ST.hm > 2 && !ST.fl.duel) { ST.fl.duel = 1; banner("⚔️ Só restam 2 jogadores vivos!", "#fbbf24"); } }
       const it = (ic, v) => `<span class="it"><i>${ic}</i>${v}</span>`;   // cada indicador num bloco com espaço entre o ícone e o valor
-      const sh = (ST.lf >= 0 ? `<span class="hr">${Array.from({ length: LIVES }, (_, k) => `<span>${k < ST.lf ? "♥" : "♡"}</span>`).join("")}</span>` : "") + it("📏", ST.lastC.toFixed(1) + " cm") + it("🐍", ST.n) + (tl >= 0 ? it("⏱", String(tl / 60 | 0).padStart(2, "0") + ":" + String(tl % 60).padStart(2, "0")) : "") + it("👥", ST.on || 1);   // por tempo: sem corações; eliminação: sem relógio
+      const sh = (ST.lf >= 0 ? `<span class="hr">${Array.from({ length: LIVES }, (_, k) => `<span>${k < ST.lf ? "♥" : "♡"}</span>`).join("")}</span>` : "") + it("📏", ST.lastC.toFixed(1) + " cm") + it("🐍", ST.n) + (tl >= 0 ? it("⏱", String(tl / 60 | 0).padStart(2, "0") + ":" + String(tl % 60).padStart(2, "0")) : "") + it("👥", ST.on || 1) + (ST.ts ? ST.ts.map((v, k) => `<span class="it" style="color:${TEAMS[k].c};font-weight:800"><i>${TEAMS[k].e}</i>${(v / 10).toFixed(1)}</span>`).join("") : "");   // por tempo: sem corações; eliminação: sem relógio
       if (sh !== lastSc) { lastSc = sh; sc.innerHTML = sh; }   // só mexe no DOM quando o texto muda
       if (ST.lv !== lv) {
         lv = ST.lv;
@@ -286,7 +351,7 @@ export function runGame(cv, { hud, sc, dd, fin, tail, bn, vg, send }) {
         }
         hud.innerHTML = rows.map(n => {
           if (n < 0) return "<div style='opacity:.5;text-align:center;line-height:.6'>⋮</div>";
-          const [i, c, a, hm] = all[n], nm = hm ? "<span style='color:#fde047'>" + esc(ST.names[i]) + "</span>" : esc(ST.names[i]);   // todos os jogadores humanos em amarelo
+          const [i, c, a, hm, tt] = all[n], nm = tt >= 0 ? "<span style='color:" + TEAMS[tt].c + "'>" + esc(ST.names[i]) + "</span>" : hm ? "<span style='color:#fde047'>" + esc(ST.names[i]) + "</span>" : esc(ST.names[i]);   // todos os jogadores humanos em amarelo
           return "<div " + (i === ST.you ? "data-me " : "") + "style='opacity:" + (a ? 1 : .4) + "'><span style='display:inline-block;width:1.1em'>" + (i === ST.you ? "▶" : "") + "</span>" + (n + 1) + ". " + (i === ST.you ? "<b>" + nm + "</b>" : nm) + " " + (c / 10).toFixed(1) + " cm</div>";
         }).join("");
       }
@@ -302,7 +367,7 @@ export function runGame(cv, { hud, sc, dd, fin, tail, bn, vg, send }) {
   raf = requestAnimationFrame(loop);
   return () => {
     wl?.release?.(); document.removeEventListener("visibilitychange", lock);
-    cancelAnimationFrame(raf); clearInterval(si); clearInterval(bi); clearTimeout(kto);
+    cancelAnimationFrame(raf); clearInterval(si); clearInterval(pingI); clearInterval(bi); clearTimeout(kto);
     W.removeEventListener("resize", rs); W.removeEventListener("pointermove", mv); W.removeEventListener("pointerdown", pd); W.removeEventListener("pointerup", pu);
     W.removeEventListener("pointercancel", pu); W.removeEventListener("keydown", kd); W.removeEventListener("keyup", ku); W.removeEventListener("blur", bl);
   };
