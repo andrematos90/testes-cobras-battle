@@ -2,6 +2,7 @@
 // A sessão no navegador é um token assinado por nós (HMAC), guardado no localStorage. Usuários ficam em memória e no MongoDB (coleção "users").
 import crypto from "crypto";
 import { onDb, onFlush } from "./db.js";
+import { today } from "./daily.js";
 import { NAME_MAX, NH, NB } from "../shared/config.js";
 
 const b64u = b => Buffer.from(b).toString("base64url");
@@ -40,7 +41,7 @@ function put(u) {
 }
 const save = u => { dirty.set(u._id, u); };
 
-export const publicUser = u => u ? { chars: u.chars.map(c => ({ nm: c.nm, head: c.head, body: c.body })), sel: u.last || 0 } : null;
+export const publicUser = u => u ? { chars: u.chars.map(c => ({ nm: c.nm, head: c.head, body: c.body, lk: c.lockDay === today() ? 1 : 0 })), sel: u.last || 0 } : null;
 
 // ---------- sessão (token nosso) ----------
 export function makeToken(sub) {
@@ -104,8 +105,13 @@ export function setProfile(u, { idx, nm, head, body }) {
   if (isNew) c = { nm: "", nmKey: null, head: Math.random() * NH | 0, body: Math.random() * NB | 0 };
   if (!Number.isInteger(head) || head < 0 || head >= NH) head = c.head;
   if (!Number.isInteger(body) || body < 0 || body >= NB) body = c.body;
+  // nome e cabeça de cada personagem ficam TRAVADOS até o dia seguinte (meia-noite em Brasília) depois de salvos; o corpo continua livre
+  const td = today(), changed = isNew || c.nm !== n || c.head !== head;
+  if (!isNew && c.lockDay === td && changed) return { err: "O nome e a cabeça deste personagem só podem ser mudados amanhã (a partir da meia-noite, horário de Brasília). O corpo você pode trocar quando quiser." };
+  if (changed && u.chars.some((o, j) => j !== idx && o && o.head === head)) return { err: "Cada personagem precisa de uma cabeça diferente das outras dos seus personagens." };
   if (c.nmKey && c.nmKey !== k) byName.delete(c.nmKey);
   const renamed = c.nm !== n;
+  if (changed) c.lockDay = td;
   c.nm = n; c.nmKey = k; c.head = head; c.body = body; u.chars[idx] = c; u.last = idx; byName.set(k, me); save(u);
   return { ok: true, renamed, idx };
 }

@@ -4,6 +4,13 @@ import { CAROL, isCarol, carolProf, carolBall, CAROL_LEN } from "../shared/carol
 // card 3 (furacão): chance de a partida ter furacão, quantos cards no máximo (sorteia de 1 até HUR_MAX, cada um num momento diferente), janela de tempo em que aparecem (s), tempo de voo, tempo total sem controle, fração do tamanho que sobra ao bater no canto
 const HUR_TESTE = false;   // true = MODO TESTE: 8 cards de furacão desde o começo de TODA partida (voltam 15 s depois de pegos). Mude para false para voltar ao normal (30% das partidas, 1 a 3 cards)
 const HUR_CHANCE = .30, HUR_MAX = 3, HUR_AT = [60, 540], HUR_FLY = 2.5, HUR_STUN = 3, HUR_KEEP = .2;
+// MOMENTOS DE AGRESSIVIDADE: de tempos em tempos uma parte dos bots caça os jogadores (ignora comida, não foge, usa turbo, vê de mais longe e tenta cortar a frente)
+const AG_EVERY = [25, 70];   // intervalo (s) entre um momento e o próximo, sorteado
+const AG_DUR = [12, 25];     // duração (s) de cada momento, sorteada
+const AG_FRAC = .4;          // fração dos bots que ficam agressivos em cada momento (sorteados a cada vez)
+const AG_RANGE = 3200;       // de que distância (px) eles enxergam um jogador para caçar
+const FOOD_K = .45;      // QUANTIDADE DE COMIDA no mapa (1 = como era antes; .45 = menos da metade). Menor = mais disputada
+const FOOD_REFILL = 3;   // quantas comidas novas aparecem por tick (25 ticks por segundo) quando está abaixo do total. Menor = a comida demora mais a repor
 const BIG_FROM = 100, BIG_FULL = 200, BIG_BONUS = .5;   // aceleração das cobras grandes (cm de onde começa, cm onde chega ao máximo, bônus máximo = 50%)
 export function createGame(human, bodies = [], mode = "time", heads = [], pnames = [], guests = [], teams = null) {
   const TEAMON = !!teams;   // partida por equipe: teams[i] = 0 ou 1 (equipe de cada vaga); bots nunca têm equipe
@@ -40,7 +47,7 @@ export function createGame(human, bodies = [], mode = "time", heads = [], pnames
     }
     return { x, y, v: 1 + (Math.random() * 2 | 0), e: Math.random() * 4 | 0 };
   };
-  for (let i = 0; i < 1800; i++) add(nf());
+  for (let i = 0; i < Math.round(1800 * FOOD_K); i++) add(nf());
 
   // cabeça e nome de cada uma das cobras selecionáveis: jogadores usam a escolha deles; as vagas sem jogador (bots) ganham cabeças que ninguém está usando
   const hdUsed = new Set(); for (let i = 0; i < NSEL; i++) if (human[i]) hdUsed.add(heads[i]);
@@ -113,7 +120,7 @@ export function createGame(human, bodies = [], mode = "time", heads = [], pnames
     return { x: bx, y: by, t, id, gone: false, back: 0 };
   };
   const cards = []; for (let t = 0; t < 2; t++) for (let k = 0; k < CARDS_POR_TIPO; k++) cards.push(ncard(t, cards.length));
-  let el = 0, ag = 0, evT = 20 + Math.random() * 30, fph = 30, ftg = 1800, cl = 12, dc = 0, mev = 70 + Math.random() * 40, rain = 0, rp = [], ices = [];   // mev = tempo até a próxima chuva de sorvete; rain = segundos restantes; rp = os 2 pontos do mapa onde ela cai; ices = sorvetes no chão (somem depois de um tempo)
+  let el = 0, ag = 0, evT = 20 + Math.random() * 30, fph = 30, ftg = Math.round(1800 * FOOD_K), cl = 12, dc = 0, mev = 70 + Math.random() * 40, rain = 0, rp = [], ices = [];   // mev = tempo até a próxima chuva de sorvete; rain = segundos restantes; rp = os 2 pontos do mapa onde ela cai; ices = sorvetes no chão (somem depois de um tempo)
   const c3s = []; const c3T = HUR_TESTE ? Array(8).fill(0) : Math.random() < HUR_CHANCE ? Array.from({ length: 1 + (Math.random() * HUR_MAX | 0) }, () => HUR_AT[0] + Math.random() * (HUR_AT[1] - HUR_AT[0])).sort((a, b) => a - b) : [];   // momentos em que cada card aparece (cada um em um momento diferente da partida)   // card3: aparece UMA vez, em qualquer lugar, no momento sorteado
 
     // nascimento longe dos jogadores humanos: sorteia até 40 pontos e usa o primeiro com folga de SPAWN_FAR px da cabeça e do corpo de qualquer humano vivo (se nenhum servir, o mais distante)
@@ -185,11 +192,12 @@ export function createGame(human, bodies = [], mode = "time", heads = [], pnames
         if (h.t <= 0) s.hv = null;
       }
       if (s.bot) {
+        const aggro = ag > 0 && s.agr && !s.carol;   // este bot está caçando agora
         s.t -= dt; s.cr = false; const m = WD / 2 - 250;
         if (Math.abs(s.x) > m || Math.abs(s.y) > m) s.ta = Math.atan2(-s.y, -s.x);
         else {
           let th = null, td = 500 * 500;   // jogador humano vindo na minha direção (tentando cortar minha frente)
-          if (!s.carol) for (const h of sn) {   // a MC Carol não foge de ninguém
+          if (!s.carol && !aggro) for (const h of sn) {   // a MC Carol não foge de ninguém; bot agressivo também não
             if (h.bot || !h.alive) continue;
             const dx = s.x - h.x, dy = s.y - h.y, d = dx * dx + dy * dy;
             if (d < td) { const ang = Math.atan2(dy, dx); if (Math.abs(Math.atan2(Math.sin(ang - h.a), Math.cos(ang - h.a))) < .8) { td = d; th = h; } }
@@ -198,12 +206,12 @@ export function createGame(human, bodies = [], mode = "time", heads = [], pnames
           if (th) { s.ta = Math.atan2(s.y - th.y, s.x - th.x); s.boost = td < 350 * 350 && s.cm > .5; s.cr = true; }   // foge
           else {
             let gd = 700 * 700;
-            near(s.x, s.y, 700, c => { for (const f of c) { if (!f.d) continue; const d = (f.x - s.x) ** 2 + (f.y - s.y) ** 2; if (d < gd) { gd = d; gb = f; } } });
+            if (!aggro) near(s.x, s.y, 700, c => { for (const f of c) { if (!f.d) continue; const d = (f.x - s.x) ** 2 + (f.y - s.y) ** 2; if (d < gd) { gd = d; gb = f; } } });
             s.cr = !!gb;
             if (gb) { s.ta = Math.atan2(gb.y - s.y, gb.x - s.x); s.boost = s.cm > .6; }
             else {
-              let bd = 2200 * 2200;
-              if (ag > 0 && !s.carol) for (const o of sn) { if (o.bot || !o.alive || o.cm > s.cm * 4 + 1) continue; const d = (o.x - s.x) ** 2 + (o.y - s.y) ** 2; if (d < bd) { bd = d; tg = o; } }
+              let bd = (aggro ? AG_RANGE : 2200) ** 2;
+              if (aggro) for (const o of sn) { if (o.bot || !o.alive || o.cm > s.cm * 6 + 2) continue; const d = (o.x - s.x) ** 2 + (o.y - s.y) ** 2; if (d < bd) { bd = d; tg = o; } }
               if (tg) { s.ta = Math.atan2(tg.y + Math.sin(tg.a) * 140 - s.y, tg.x + Math.cos(tg.a) * 140 - s.x); s.boost = bd < 500 * 500 && s.cm > .6; }   // tenta matar o jogador
               else {
                 s.boost = false;
@@ -223,14 +231,14 @@ export function createGame(human, bodies = [], mode = "time", heads = [], pnames
               if (Math.abs(q.x - s.x) < 200 && Math.abs(q.y - s.y) < 200 && Math.hypot(q.x - s.x, q.y - s.y) < lm + o.rr * (o.carol ? prf(o, k) : 1)) { s.ta = Math.atan2(s.y - q.y, s.x - q.x); s.t = 10; break out; }
             } }
         }
-        if ((ag <= 0 && !s.cr) || s.carol) s.boost = false;
+        if ((!aggro && !s.cr) || s.carol) s.boost = false;
       } else { s.ta = s.stf > 0 ? s.a : s.inp.a; s.boost = s.stf > 0 ? false : s.inp.b; }   // Tadala: reta e dura, sem controle
       const r = RH(s), bo = s.boost && s.cm > .4;
       if (bo) s.cm -= .012 * dt;
       const df = Math.atan2(Math.sin(s.ta - s.a), Math.cos(s.ta - s.a));
       // raio mínimo da curva (px) cresce com o tamanho: cobra pequena faz curva fechada (pega a comida), a gigante faz curva larga. Giro por tick = passo normal / raio
       const spf = (1 + BIG_BONUS * Math.max(0, Math.min(1, (s.cm - BIG_FROM) / (BIG_FULL - BIG_FROM)))) * (s.carol ? CAROL.SPEED : 1);   // cobra grande é mais rápida: +0% até 100 cm, subindo até +50% aos 200 cm (e além)
-      const mt = Math.min(1.2 * spf, 4.8 * dt * spf / (TURN_R0 + Math.max(0, r - 10) * TURN_RK)) * (!s.bot && s.inp.k ? 1.5 : 1) * (s.bot && ag > 0 ? 1.35 : 1);
+      const mt = Math.min(1.2 * spf, 4.8 * dt * spf / (TURN_R0 + Math.max(0, r - 10) * TURN_RK)) * (!s.bot && s.inp.k ? 1.5 : 1) * (s.bot && s.agr && ag > 0 ? 1.35 : 1);
       if (!s.hv) { s.a += Math.max(-mt, Math.min(mt, df)); const sp = (bo ? 8.2 : 4.8) * dt * spf; s.x += Math.cos(s.a) * sp; s.y += Math.sin(s.a) * sp; }   // com furacão a posição já foi decidida acima
       const gap = s.carol ? RB(s) * .1 : r * .5, n = s.carol ? Math.ceil(CAROL_LEN * RB(s) / gap) + 1 : Math.max(8, Math.min(L(s), Math.floor(Math.min(BODY_MAX, 4500 + 9 * s.cm) / gap) + 1));   // comprimento do corpo (px) cresce com o tamanho: 4500 + 9 px por cm, até BODY_MAX   // mesma quantidade de pontos de antes da cobra ficar fina (menos trabalho e menos dados na rede)  // mesma quantidade de pontos de antes da cobra ficar fina (menos trabalho e menos dados na rede)  // BODY_MAX: comprimento máximo do corpo em px
       layout(s, gap, n);
@@ -289,7 +297,7 @@ export function createGame(human, bodies = [], mode = "time", heads = [], pnames
       s.bx0 = x0; s.bx1 = x1; s.by0 = y0; s.by1 = y1;
     }
     const sec = dt / 60; el += sec;
-    if (ag > 0) { ag -= sec; if (ag <= 0) { ag = 0; evT = 30 + Math.random() * 60; } } else { evT -= sec; if (evT <= 0) ag = 15; }
+    if (ag > 0) { ag -= sec; if (ag <= 0) { ag = 0; evT = AG_EVERY[0] + Math.random() * (AG_EVERY[1] - AG_EVERY[0]); } } else { evT -= sec; if (evT <= 0) { ag = AG_DUR[0] + Math.random() * (AG_DUR[1] - AG_DUR[0]); for (const b of sn) b.agr = Math.random() < AG_FRAC; } }
     // chuva de sorvete: de tempos em tempos (1m30 a 2m40), por 10 s, cai sorvete em 2 pontos aleatórios do mapa ao mesmo tempo (sem aviso)
     mev -= sec;
     if (mev <= 0) { mev = 90 + Math.random() * 70; const lim = WD / 2 - 450; rain = 10;
@@ -303,10 +311,10 @@ export function createGame(human, bodies = [], mode = "time", heads = [], pnames
     }
     for (const f of ices) if (!f.gone && el - f.t > 45) { const c = grid.get(key(f.x, f.y)); if (c) { const j = c.indexOf(f); if (j >= 0) c.splice(j, 1); } nfood--; f.gone = true; }
     if (ices.length && ices[0].gone) ices = ices.filter(f => !f.gone);
-    fph -= sec; if (fph <= 0) { fph = 25 + Math.random() * 30; ftg = [800, 1800, 3500][Math.random() * 3 | 0]; }
-    cl -= sec; if (cl <= 0) { cl = 20 + Math.random() * 25; const hx = rnd(WD - 600), hy = rnd(WD - 600); for (let i = 0; i < 90; i++) { const a = Math.random() * 6.28, d = Math.random() * 320; add({ x: hx + Math.cos(a) * d, y: hy + Math.sin(a) * d, v: 1 + (Math.random() * 2 | 0), e: Math.random() * 4 | 0 }); } }
+    fph -= sec; if (fph <= 0) { fph = 25 + Math.random() * 30; ftg = Math.round([800, 1800, 3500][Math.random() * 3 | 0] * FOOD_K); }
+    cl -= sec; if (cl <= 0) { cl = 20 + Math.random() * 25; const hx = rnd(WD - 600), hy = rnd(WD - 600); for (let i = 0, nc = Math.round(90 * FOOD_K); i < nc; i++) { const a = Math.random() * 6.28, d = Math.random() * 320; add({ x: hx + Math.cos(a) * d, y: hy + Math.sin(a) * d, v: 1 + (Math.random() * 2 | 0), e: Math.random() * 4 | 0 }); } }
     hm -= sec; if (hm <= 0) { hm = FOOD_HOT_MOVE[0] + Math.random() * (FOOD_HOT_MOVE[1] - FOOD_HOT_MOVE[0]); Object.assign(HOT[Math.random() * HOT.length | 0], hpos()); }   // um ponto de comida muda de lugar
-    for (let q = 0; q < 10 && nfood < ftg; q++) add(nf());
+    for (let q = 0; q < FOOD_REFILL && nfood < ftg; q++) add(nf());
     if (nfood > ftg + 150) for (let q = 0; q < 8; q++) { const c = grid.get(key(rnd(WD - 100), rnd(WD - 100))); if (c && c.length && !c[0].d && c[0].e !== 5) { c[0].gone = true; c.shift(); nfood--; } }
     const al = sn.filter(s => s.alive);
     G.te = el >= TIME;   // tempo esgotado

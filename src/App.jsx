@@ -87,9 +87,9 @@ function Lobby({ lob, send, muted, setMuted, notice, clearNotice, openDr, err, c
   const guest = lob.kind === "guest", chars = (lob.u && lob.u.chars) || [], MAXC = 3;
   const [ci, setCi] = useState(guest ? 0 : Math.min((lob.u && lob.u.sel) || 0, chars.length));   // personagem escolhido (até 3 por conta; igual a chars.length = novo)
   const okB = v => Number.isInteger(+v) && v !== null && v !== "" && +v >= 0 && +v < NB ? +v : 0;   // corpo salvo/recebido fora da lista vira 0
-  const c0 = chars[ci], [nm, setNm] = useState(c0 ? c0.nm : ""), [hd, setHd] = useState(c0 ? c0.head : Math.random() * NH | 0), [bd, setBd] = useState(guest ? okB(lsGet("cobras_gb") != null ? lsGet("cobras_gb") : lob.body) : okB(c0 ? c0.body : lob.body));
+  const c0 = chars[ci], lk = !guest && !!(c0 && c0.lk), [nm, setNm] = useState(c0 ? c0.nm : ""), [hd, setHd] = useState(c0 ? c0.head : Math.random() * NH | 0), [bd, setBd] = useState(guest ? okB(lsGet("cobras_gb") != null ? lsGet("cobras_gb") : lob.body) : okB(c0 ? c0.body : lob.body));
   const pick = i => { sfx.click(); clearErr(); setCi(i); const c = chars[i]; setNm(c ? c.nm : ""); setHd(c ? c.head : Math.random() * NH | 0); setBd(c ? okB(c.body) : Math.random() * NB | 0); };
-  const fn = useRef(); const goH = d => { sfx.click(); setHd(h => (h + d + NH) % NH); }, goB = d => { sfx.click(); setBd(b => { const n = (b + d + NB) % NB; if (guest) lsSet("cobras_gb", String(n)); return n; }); };
+  const fn = useRef(); const goH = d => { if (lk) return; sfx.click(); setHd(h => (h + d + NH) % NH); }, goB = d => { sfx.click(); setBd(b => { const n = (b + d + NB) % NB; if (guest) lsSet("cobras_gb", String(n)); return n; }); };
   fn.current = { goH, goB };
   useEffect(() => {
     const f = e => {
@@ -121,9 +121,10 @@ function Lobby({ lob, send, muted, setMuted, notice, clearNotice, openDr, err, c
         {!guest && <div className="chs">{Array.from({ length: Math.min(MAXC, chars.length + 1) }, (_, i) => <button key={i} disabled={pend} className={"btn chb" + (ci === i ? " on" : " g")} onClick={() => pick(i)}>{chars[i] ? chars[i].nm : "＋ Novo personagem"}</button>)}</div>}
         {lob.teams && <div className="tmb" style={lob.tm >= 0 ? { color: TEAMS[lob.tm].c, borderColor: TEAMS[lob.tm].c } : null}>{lob.tm >= 0 ? `Sua equipe: ${TEAMS[lob.tm].e} ${TEAMS[lob.tm].n}` : "Partida por equipe: a equipe é sorteada quando você clicar em JOGAR"}</div>}
         <Preview hd={guest ? -1 : hd} b={bd} />
-        {!guest && <input className="nm big-nm" maxLength={NAME_MAX} value={nm} placeholder="Nome do personagem (único)" disabled={pend} onChange={e => setNm(e.target.value)} />}
+        {!guest && <input className="nm big-nm" maxLength={NAME_MAX} value={nm} placeholder="Nome do personagem (único)" disabled={pend || lk} onChange={e => setNm(e.target.value)} />}
+        {!guest && <div className="s lkn">{lk ? "🔒 Nome e cabeça travados até amanhã (meia-noite, horário de Brasília). O corpo você pode trocar." : "⚠️ Depois que você jogar com este personagem, o nome e a cabeça ficam travados até amanhã. Cada personagem precisa de nome e cabeça diferentes."}</div>}
         {err && <div className="err">{err}</div>}
-        {!guest && <div className="ba"><button className="ab" disabled={pend} onClick={() => goH(-1)}>‹</button><span className="bn">Cabeça: {HEAD_NAMES[hd]}</span><button className="ab" disabled={pend} onClick={() => goH(1)}>›</button></div>}
+        {!guest && <div className="ba"><button className="ab" disabled={pend || lk} onClick={() => goH(-1)}>‹</button><span className="bn">Cabeça: {HEAD_NAMES[hd]}</span><button className="ab" disabled={pend || lk} onClick={() => goH(1)}>›</button></div>}
         <div className="ba"><button className="ab" disabled={pend} onClick={() => goB(-1)}>‹</button><span className="bn">Corpo: {BODY_NAMES[bd]}</span><button className="ab" disabled={pend} onClick={() => goB(1)}>›</button></div>
         {guest && <p className="s">Convidado entra com cabeça de bot e nome sorteado, só escolhe o corpo e não aparece no Ranking do Dia. Entre com o Google para ter até 3 personagens salvos (nome, cabeça e corpo).</p>}
       </div>

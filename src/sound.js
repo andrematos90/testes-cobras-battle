@@ -37,7 +37,7 @@ export function startMusic() {
   if (!rb) { rb = new Audio("/rabo.mp3"); rb.preload = "auto"; rb.onerror = () => { rbBad = true; };
     try { const c = ctx(), gn = c.createGain(); gn.gain.value = 1.4; c.createMediaElementSource(rb).connect(gn); gn.connect(c.destination); } catch (e) {} }   // rabo.mp3 40% mais alto (volume do <audio> já está no máximo, então o ganho de 1.4 é feito pelo WebAudio) }
   if (mu) return;
-  mu = new Audio("/musica.mp3"); mu.loop = true; mu.volume = .1008; mu.muted = muted;   // volume .1008 = mais 40% mais baixa que .168 (originalmente .28)
+  mu = new Audio("/musica.mp3"); mu.loop = true; mu.volume = .0504; mu.muted = muted;   // volume .1008 = mais 40% mais baixa que .168 (originalmente .28)
   mu.play().catch(() => {});
 }
 export function toggleMute() { muted = !muted; if (mu) mu.muted = muted; return muted; }
