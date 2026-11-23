@@ -24,6 +24,9 @@ export const sfx = {
 };
 // som do aviso "bateu no seu rabo": coloque o arquivo rabo.mp3 na pasta public (se não existir, toca o alerta sintético)
 let rb = null, rbBad = false, rbT = 0;
+export function playBoom() {   // explosão da MC Carol: toca public/mccarol.mp3 (respeita o botão de mudo)
+  if (muted) return; const a = new Audio("/mccarol.mp3"); a.volume = 1; a.play().catch(() => {});
+}
 export function playRabo() {
   if (muted) return;
   const n = performance.now(); if (n - rbT < 800) return; rbT = n;

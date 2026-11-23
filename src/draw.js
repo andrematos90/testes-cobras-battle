@@ -26,7 +26,7 @@ const JARA = [[44, 38, 50], [28, 52, 22], [48, 45, 68]];           // pardo, mar
 const SK = [
   SOLID(140, 8, 44), SOLID(0, 0, 69), SOLID(20, 10, 48), SOLID(40, 4, 52), SOLID(212, 22, 45), SOLID(355, 34, 47),   // pele1 a pele6: píton verde, branca, marrom, cinza, azul, vermelha
   SOLID(358, 45, 29), SOLID(97, 34, 15), SOLID(28, 35, 35), SOLID(336, 2, 30), SOLID(58, 97, 15), SOLID(24, 88, 72), SOLID(0, 0, 82),   // pele7 a pele13
-  SOLID(25, 90, 50), SOLID(150, 60, 25), SOLID(355, 85, 46),   // pele14 a pele16: cobra colorida neon, esmeralda e ouro, coral vermelha
+  SOLID(25, 90, 50), SOLID(150, 60, 25), SOLID(355, 85, 46), SOLID(15, 40, 25),   // o último (17º) é a MC Carol   // pele14 a pele16: cobra colorida neon, esmeralda e ouro, coral vermelha
 ];
 function head(g,x,y,a,r,k,im,hf){
  const ph=im&&im.sm,hr=ph?(hf||50):r*1.5;
@@ -156,7 +156,7 @@ const SOL = (h, s, l, bl = true) => ({ pal: [PL(h, s, l)], bl });
 export const SKIN = [
   { pal: [PL(140, 8, 44)], tex: 0 }, { pal: [PL(0, 0, 69)], tex: 1 }, { pal: [PL(20, 10, 48)], tex: 2 }, { pal: [PL(40, 4, 52)], tex: 3 }, { pal: [PL(212, 22, 45)], tex: 4 }, { pal: [PL(355, 34, 47)], tex: 5 },
   { pal: [PL(358, 45, 29)], tex: 6 }, { pal: [PL(97, 34, 15)], tex: 7 }, { pal: [PL(28, 35, 35)], tex: 8 }, { pal: [PL(336, 2, 30)], tex: 9 }, { pal: [PL(58, 97, 15)], tex: 10 }, { pal: [PL(24, 88, 72)], tex: 11 }, { pal: [PL(0, 0, 82)], tex: 12 },
-  { pal: [PL(25, 90, 50)], tex: 13 }, { pal: [PL(150, 60, 25)], tex: 14 }, { pal: [PL(355, 85, 46)], tex: 15 },
+  { pal: [PL(25, 90, 50)], tex: 13 }, { pal: [PL(150, 60, 25)], tex: 14 }, { pal: [PL(355, 85, 46)], tex: 15 }, { pal: [PL(15, 40, 25)], tex: 16, tw: 1.1 },   // MC Carol (pelecarol.png, espelhada nos dois sentidos; tw = largura de cada ladrilho em raios)
 ];
 // textura de foto: a foto é espelhada para baixo (sem emenda) e vira um padrão; no corpo ela corre ao longo da cobra e acompanha as curvas
 const TEXS = [];
@@ -164,12 +164,14 @@ function texPat(i) {
   let t = TEXS[i]; if (t) return t.ok ? t : null;
   t = TEXS[i] = { ok: false, p: null, w: 1 }; const im = new Image(); im.onload = () => {
     const c = document.createElement("canvas"); c.width = im.naturalWidth; c.height = im.naturalHeight * 2; const x = c.getContext("2d");
+    if (i === 16) c.width = im.naturalWidth * 2;   // MC Carol: espelha também na horizontal (a foto é pequena e fica repetida sem emenda)
     x.drawImage(im, 0, 0); x.translate(0, c.height); x.scale(1, -1); x.drawImage(im, 0, 0);
-    t.p = x.createPattern(c, "repeat"); t.w = im.naturalWidth; t.ok = !!t.p;
-  }; im.src = "/pele" + (i + 1) + ".png"; return null;
+    if (i === 16) { x.setTransform(1, 0, 0, 1, 0, 0); x.translate(c.width, 0); x.scale(-1, 1); x.drawImage(c, 0, 0, im.naturalWidth, c.height, 0, 0, im.naturalWidth, c.height); }
+    t.p = x.createPattern(c, "repeat"); t.w = c.width; t.ok = !!t.p;
+  }; im.src = i === 16 ? "/pelecarol.png" : "/pele" + (i + 1) + ".png"; return null;
 }
 const TM = typeof DOMMatrix !== "undefined" ? new DOMMatrix() : null;
-if (typeof document !== "undefined") for (let i = 0; i < 16; i++) texPat(i);   // baixa todas as fotos de corpo assim que o jogo abre (não aparece "pulando" de cor lisa para foto)
+if (typeof document !== "undefined") for (let i = 0; i < 17; i++) texPat(i);   // baixa todas as fotos de corpo assim que o jogo abre (não aparece "pulando" de cor lisa para foto)
 // ondula os pontos do corpo (c = pontos já interpolados, tn = total de pontos do corpo, ph = fase). Escreve em w. A cabeça (j=0) não sai do lugar.
 export function wiggle(c, n, tn, r, ph, w) {
   if (!WIGGLE) { for (let j = 0; j < 2 * n; j++) w[j] = c[j]; return w; }
@@ -186,7 +188,7 @@ export const WAVE_STEP = (r, dist) => WSPEED * WK * dist / (1.5 * r);   // quant
 let SS = new Float32Array(2048), SX = new Float32Array(2048), SY = new Float32Array(2048), SU = new Float32Array(2048), SR = new Float32Array(2048), SI = new Uint8Array(2048), SV = new Uint8Array(2048), TX = new Float32Array(2048), TY = new Float32Array(2048);
 const SUB = 4;   // amostras entre dois pontos do corpo
 // desenha o corpo. w = pontos (ondulados), n = qtde de pontos recebidos, tn = total do corpo, r = raio, k = tipo de corpo, t = tempo (ms), V = [xmin, xmax, ymin, ymax] da tela
-export function drawBody(g, w, n, tn, r, k, t, V, pa = 1) {   // pa = intensidade do pulsar (0 = corpo reto/duro, 1 = pulsando)
+export function drawBody(g, w, n, tn, r, k, t, V, pa = 1, pf = null) {   // pf = perfil de espessura próprio (MC Carol): (u, tn) -> 0..1   // pa = intensidade do pulsar (0 = corpo reto/duro, 1 = pulsando)
   if (n < 2) return;
   const sk = SKIN[k] || SKIN[0], pal = sk.pal, m = (n - 1) * SUB + 1;
   if (m > SX.length) { const z = m * 2; SS = new Float32Array(z); SX = new Float32Array(z); SY = new Float32Array(z); SU = new Float32Array(z); SR = new Float32Array(z); SI = new Uint8Array(z); SV = new Uint8Array(z); TX = new Float32Array(z); TY = new Float32Array(z); }
@@ -205,7 +207,7 @@ export function drawBody(g, w, n, tn, r, k, t, V, pa = 1) {   // pa = intensidad
   // 2) raio (afina até a ponta), cor e visibilidade de cada amostra
   const x0 = V[0], x1 = V[1], y0 = V[2], y1 = V[3];
   for (let i = 0; i < m; i++) {
-    const u = SU[i], tp = Math.max(.045, (TAPER(u, tn) - .1) / .9);
+    const u = SU[i], tp = pf ? Math.max(.03, pf(u, tn)) : Math.max(.045, (TAPER(u, tn) - .1) / .9);
     let rr = r * tp, ix = 0;
     if (PULSE && pa > .01) rr *= 1 + PULSE * pa * Math.min(1, u / 3) * Math.sin(t * PULSE_W - u * PULSE_K);   // onda de inchaço que desce da cabeça até o rabo (0 no pescoço)
     if (sk.rb) ix = (Math.round((u * 14 + t / 14) / 10) * 10 % 360) / 10 | 0;
@@ -222,8 +224,9 @@ export function drawBody(g, w, n, tn, r, k, t, V, pa = 1) {   // pa = intensidad
     for (let i = m - 2; i >= 0; i--) { if (!SV[i] && !SV[i + 1]) continue; g.lineWidth = SR[i] * 3.1; g.beginPath(); g.moveTo(SX[i], SY[i]); g.lineTo(SX[i + 1], SY[i + 1]); g.stroke(); }
     g.globalAlpha = ga;
   }
-  const WF = [1.1, 1, .6, .28], OX = [0, 0, -.12, -.2], OY = [0, 0, -.18, -.3], tp = sk.tex != null && TM ? texPat(sk.tex) : null, tsc = tp ? 2 * r / tp.w : 1, stp = tp ? 2 : 1;
+  const WF = [1.1, 1, .6, .28], OX = [0, 0, -.12, -.2], OY = [0, 0, -.18, -.3], tp = sk.tex != null && TM ? texPat(sk.tex) : null, tsc = tp ? (sk.tw ? r * sk.tw / tp.w : 2 * r / tp.w) : 1, stp = tp ? 2 : 1;
   for (let pass = 0; pass < 4; pass++) {
+    if (pass > 1 && sk.tw) continue;   // MC Carol: sem os brilhos brancos (com a barriga larga eles se acumulam e deixam tudo branco)
     const wf = WF[pass] * 2, ox = OX[pass], oy = OY[pass];
     for (let i = m - 2; i >= 0; i -= stp) {   // fotos: um traço para cada 2 amostras (metade do trabalho; as pontas arredondadas escondem a emenda)
       const j = Math.min(m - 1, i + stp);

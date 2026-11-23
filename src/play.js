@@ -1,7 +1,8 @@
 import { SK, FE, C, head, sHead, esc, condomIcon, condomSleeve, condomGeo, condomShed, pillIcon, wiggle, drawBody, WAVE_STEP, cardIcon, CARD_COL } from "./draw.js";
 import { CHAO_URL } from "./chaoData.js";
 import { makeTile } from "./terrain.js";
-import { sfx, playRabo } from "./sound.js";
+import { sfx, playRabo, playBoom } from "./sound.js";
+import { CAROL, isCarol, carolProf, carolBall } from "../shared/carol.js";
 import { WD, NSEL, NH, LIVES, TAPER, TICK, INV_TIME, VIEW_SPAN, TURN_R0, TURN_RK } from "../shared/config.js";
 import { TEAMS } from "../shared/teams.js";
 
@@ -11,7 +12,7 @@ const IMGS = [];
 export const getImg = k => IMGS[k] || (IMGS[k] = (() => {
   const m = new Image(); m.decoding = "async";
   m.onload = () => { const q = Math.min(m.naturalWidth, m.naturalHeight), c = document.createElement("canvas"); c.width = c.height = 256; const t = c.getContext("2d"); t.imageSmoothingQuality = "high"; t.drawImage(m, (m.naturalWidth - q) / 2, (m.naturalHeight - q) / 2, q, q, 0, 0, 256, 256); m.sm = c; };
-  m.src = "/cobra" + (k + 1) + ".png"; return m;   // se a foto não existir (ainda), a cobra usa a cabeça padrão com olhos
+  m.src = k === "c" ? "/mccarol.png" : "/cobra" + (k + 1) + ".png"; return m;   // se a foto não existir (ainda), a cobra usa a cabeça padrão com olhos
 })());
 // imagens dos cards: card1.png (diminui), card2.png (cresce) e card3.png (furacão, raríssimo) na pasta public (se faltar alguma, aparece um card genérico colorido com o número)
 export const CARD_IMGS = [0, 1, 2].map(i => {
@@ -57,6 +58,12 @@ export function onSnap(m) {
     banner("🌪️ FURACÃO!", "#c4b5fd", 3000); if (bnEl) { bnEl.classList.add("blink"); setTimeout(() => bnEl && bnEl.classList.remove("blink"), 3000); }
     if (m.hu !== ST.you) { ST.hurUntil = performance.now() + 3000; if (!(ST.tm && ST.tm[ST.you] >= 0 && ST.tm[ST.you] === ST.tm[m.hu])) ST.hurOff = performance.now() + 6500; }   // quem é levado pelo furacão fica sem previsão (o servidor manda na cobra); colega de equipe de quem pegou não é afetado
   }
+  for (const [x, y, i] of m.bm || []) {   // MC Carol explodiu: aviso, explosão grande e tela tremendo (mais forte perto dela)
+    banner("💥 " + esc(ST.names[i] || CAROL.NAME) + " explodiu!", "#fde047", 3500);
+    spark(x, y, "#fde047", 120, 22, 70); spark(x, y, "#39ff14", 80, 18, 60); spark(x, y, "#ffffff", 50, 26, 40); sfx.death(); playBoom();   // toca public/mccarol.mp3
+    for (let q = 0; q < 4; q++) RG.push({ x, y, r: 40 + q * 60, l: 30 + q * 8, m: 30 + q * 8, c: q % 2 ? "#fde047" : "#39ff14" });
+    const me0 = ST.snakes.get(ST.you); ST.shake = Math.max(ST.shake, me0 && Math.hypot(me0.cur[0] - x, me0.cur[1] - y) < 2500 ? 28 : 10);
+  }
   for (const [x, y, i] of m.hc || []) { spark(x, y, "#ffffff", 40, 10, 50); spark(x, y, "#c4b5fd", 24, 8, 44); if (i === ST.you) ST.shake = Math.max(ST.shake, 30); }   // bateu no canto
   for (const [x, y, i, t] of m.cp || []) {   // alguém pegou um card
     spark(x, y, CARD_COL[t] || "#fff", 30, 8, 40); spark(x, y, "#ffffff", 16, 6, 30);
@@ -95,7 +102,7 @@ export function onSnap(m) {
   const me = ST.snakes.get(ST.you), now = performance.now();
   if (me) { if (me.c > ST.lastC && now - ST.te > 50) { sfx.eat(); ST.te = now; } ST.lastC = me.c; }
   if (!m.al && !ST.dead) { ST.dead = true; sfx.death(); }
-  let d = 0; for (let k = 2; k < m.f.length; k += 3) if (m.f[k] === 4) d++;
+  let d = 0; for (let k = 2; k < m.f.length; k += 3) if (m.f[k] === 4 || m.f[k] === 7) d++;
   if (d > ST.drops + 3 && now - ST.tp > 400) { sfx.pop(); ST.tp = now; } ST.drops = d;
 }
 
@@ -132,7 +139,7 @@ function teamFlag(g, c, n, hd, r, col, t) {
 // ---- previsão do movimento da própria cobra (esconde o atraso da internet) ----
 // O servidor manda a posição de uma cobra que reflete comandos enviados há ~1 ida e volta (RTT). Aqui refazemos, com as MESMAS regras de giro e velocidade do servidor,
 // o caminho da cabeça desde esse ponto até agora usando os comandos que o jogador deu nesse tempo. Assim a cabeça responde na hora; o servidor continua mandando em tudo (se discordar, a cabeça se corrige).
-const PREDICT = true;   // false = desliga a previsão (volta a mostrar só o que o servidor mandou)
+const PREDICT = false;   // false = desliga a previsão (volta a mostrar só o que o servidor mandou)
 const TD = TICK / 16.667, BIG_FROM = 100, BIG_FULL = 200, BIG_BONUS = .5;   // mesmos valores do servidor (server/game.js)
 export function onPong(m) {   // resposta do ping: mede a ida e volta (suavizada; picos isolados são limitados)
   if (typeof m.c !== "number") return;
@@ -234,6 +241,8 @@ export function runGame(cv, { hud, sc, dd, fin, tail, bn, vg, send }) {
       const x = f[k], y = f[k + 1]; if (Math.abs(x - cx) > hw || Math.abs(y - cy) > hh) continue;
       const pl = 1 + .15 * Math.sin(ft + x * .013 + y * .017);   // cada comida pulsa em um ritmo defasado
       if (f[k + 2] === 4) { g.fillStyle = "#39ff1455"; C(g, x, y, 24 * pl); g.fillStyle = "#39ff14"; C(g, x, y, 15 * pl); g.fillStyle = "#eaffe0"; C(g, x - 5 * pl, y - 5 * pl, 5 * pl); }
+      else if (f[k + 2] === 7) { g.fillStyle = "#facc1555"; C(g, x, y, 34 * pl); g.fillStyle = "#facc15"; C(g, x, y, 22 * pl); g.fillStyle = "#fff7c2"; C(g, x - 7 * pl, y - 7 * pl, 7 * pl); }   // bolinha amarela (explosão da MC Carol)
+      else if (f[k + 2] === 8 || f[k + 2] === 9) { const ye = f[k + 2] === 9, c1 = ye ? "#facc15" : "#39ff14"; g.fillStyle = c1 + "44"; C(g, x, y, (ye ? 40 : 30) * pl); g.fillStyle = c1; C(g, x, y, ye ? 22 : 15); g.fillStyle = "#ffffffcc"; C(g, x - 5, y - 5, ye ? 7 : 5); }   // voando
       else if (f[k + 2] === 6) {   // sorvete caindo do céu: cai acelerando (~0,9 s) com sombra crescendo no chão e um respingo ao pousar
         const key = x * 20011 + y; let t0 = FALL.get(key); if (t0 == null) { if (FALL.size > 400) FALL.clear(); FALL.set(key, t0 = performance.now()); }
         const u = Math.min(1, (performance.now() - t0) / 900), oy = -720 * (1 - u * u);
@@ -251,8 +260,8 @@ export function runGame(cv, { hud, sc, dd, fin, tail, bn, vg, send }) {
     g.textBaseline = "alphabetic";
     const now2 = performance.now(), VB = [cx - hw, cx + hw, cy - hh, cy + hh];
     for (const [i, s] of ST.snakes) {
-      const pq = pr && i === ST.you ? pr : null, r = R(s.c), d = SK[ST.sk[i]].d, c = pq ? pq.pts : s.cur, n = c.length / 2, ha = pq ? pq.a : s.a;   // pq: minha cobra com a cabeça prevista
-      const im = i < NSEL && ST.heads[i] >= 0 ? getImg(ST.heads[i]) : null, ph = im && im.sm, hd = ph ? 50 : r * 1.5;   // hd = raio da cabeça
+      const car = isCarol(i), pq = pr && i === ST.you ? pr : null, rb = R(s.c), r = car ? rb * CAROL.HEAD : rb, d = SK[ST.sk[i]].d, c = pq ? pq.pts : s.cur, n = c.length / 2, ha = pq ? pq.a : s.a;   // pq: minha cobra com a cabeça prevista
+      const im = car ? getImg("c") : i < NSEL && ST.heads[i] >= 0 ? getImg(ST.heads[i]) : null, ph = im && im.sm, hd = car ? Math.max(60, r) : ph ? 50 : r * 1.5;   // hd = raio da cabeça
       if (s.iv > 0 && (INV_TIME - s.iv / 100) % .8 >= .4) g.globalAlpha = .25;   // renasceu: pisca 3 vezes (fantasma)
       const tn = (s.tn || n) + (pq ? pq.extra : 0);
       if (!s.w || s.w.length !== c.length) s.w = new Float32Array(c.length);
@@ -262,15 +271,18 @@ export function runGame(cv, { hud, sc, dd, fin, tail, bn, vg, send }) {
       if (s.sh > 0) condomSleeve(g, w, ha, r, hd, s.sh, 0);
       s.pa = s.sf ? 0 : 1;   // Tadala ativa: o pulsar para na hora e o corpo fica duro
       if (s.sf) { if (s.ft == null) s.ft = now2; } else s.ft = null;   // Tadala: congela também o relógio das cores (o arco-íris para de correr/brilhar)
-      drawBody(g, w, n, tn, r, ST.sk[i], s.sf ? s.ft : now2, VB, s.pa);
-      if (im) head(g, c[0], c[1], ha, r, ST.sk[i], im); else sHead(g, c[0], c[1], ha, r, SK[ST.sk[i]].c);
+      drawBody(g, w, n, tn, car ? carolBall(s.c) : r, ST.sk[i], s.sf ? s.ft : now2, VB, s.pa, car ? (u, t) => carolProf(u / Math.max(1, t - 1)) : null);
+      if (im) head(g, c[0], c[1], ha, r, ST.sk[i], im, car ? hd : undefined); else sHead(g, c[0], c[1], ha, r, SK[ST.sk[i]].c);
       const tmi = ST.tm && ST.tm[i] >= 0 ? ST.tm[i] : -1;
       if (tmi >= 0) teamFlag(g, c, n, hd, r, TEAMS[tmi].c, now2);   // modo por equipe: bandeirinha entre a cabeça e o corpo
       if (s.sh > 0) condomSleeve(g, w, ha, r, hd, s.sh, 1);
       g.globalAlpha = 1;
-      g.font = "bold 14px system-ui";
+      g.font = "bold " + (car ? CAROL.NAME_PX : 14) + "px system-ui";
       if (tmi >= 0) { g.lineWidth = 3; g.lineJoin = "round"; g.strokeStyle = "#000"; g.strokeText(ST.names[i], c[0], c[1] - hd - 6); g.fillStyle = TEAMS[tmi].c; } else g.fillStyle = "#fff";   // nome na cor da equipe
       g.fillText(ST.names[i], c[0], c[1] - hd - 6);
+      if (car) {   // frase piscando em cima do nome (mesmo ritmo da outra, fonte 4x maior)
+        if (((performance.now() / 450) | 0) % 2 === 0) { g.font = "bold " + CAROL.TEXT_PX + "px system-ui"; g.lineWidth = 10; g.lineJoin = "round"; g.strokeStyle = "#000"; g.fillStyle = "#fde047"; g.strokeText(CAROL.TEXT, c[0], c[1] - hd - 44); g.fillText(CAROL.TEXT, c[0], c[1] - hd - 44); }
+      }
       if (i < NSEL && ST.heads[i] === 6) {   // cabeça cobra7.png: frase piscando em cima do nome
         if (((performance.now() / 450) | 0) % 2 === 0) { g.font = "bold 15px system-ui"; g.lineWidth = 4; g.lineJoin = "round"; g.strokeStyle = "#000"; g.fillStyle = "#fde047"; g.strokeText("Vai regular comida pro Down?", c[0], c[1] - hd - 26); g.fillText("Vai regular comida pro Down?", c[0], c[1] - hd - 26); }
       }
