@@ -207,11 +207,22 @@ export function runGame(cv, { hud, sc, dd, fin, tail, bn, vg, send }) {
     if (Math.hypot(p.x - me.cur[0], p.y - me.cur[1]) > spd * hz * 1.4 + 120) { ps = null; return null; }   // longe demais do que o servidor mostra (renasceu, foi levada...): não prevê
     if (!ps) ps = { x: p.x, y: p.y }; else { const k = 1 - Math.exp(-fdt / .025); ps.x += (p.x - ps.x) * k; ps.y += (p.y - ps.y) * k; if (Math.hypot(p.x - ps.x, p.y - ps.y) > 200) { ps.x = p.x; ps.y = p.y; } }
     const buf = []; for (let q = me.h.length - 1; q >= 0; q--) { const e = me.h[q]; if (e.k <= ST.P) break; buf.push(e.p[0], e.p[1]); }   // cabeças dos snapshots que chegaram mas ainda não foram mostrados
-    const nO = out.length >> 1, nB = buf.length >> 1, pts = new Float32Array(2 * (nO + nB) + me.cur.length); let w = 0;
-    for (let q = nO - 1; q >= 0; q--) { pts[w++] = out[2 * q]; pts[w++] = out[2 * q + 1]; }
-    for (let q = 0; q < buf.length; q++) pts[w++] = buf[q];
-    pts.set(me.cur, w); pts[0] = ps.x; pts[1] = ps.y;
-    return { pts, extra: nO + nB, a: p.a };
+    // corpo previsto: o caminho (cabeça prevista -> caminho previsto -> cabeças já recebidas -> corpo que o servidor mostra) é refeito com os MESMOS pontos, espaçamento e comprimento do corpo do servidor.
+    // Assim a cobra inteira avança junto com a cabeça (o rabo "encurta" no fim na mesma medida), sem esticar nem criar dobras
+    const cur = me.cur, cnt = cur.length >> 1, V = [ps.x, ps.y];
+    for (let q = (out.length >> 1) - 1; q >= 0; q--) V.push(out[2 * q], out[2 * q + 1]);
+    for (let q = 0; q < buf.length; q++) V.push(buf[q]);
+    for (let q = 0; q < cur.length; q++) V.push(cur[q]);
+    let L0 = 0; for (let q = 1; q < cnt; q++) L0 += Math.hypot(cur[2 * q] - cur[2 * q - 2], cur[2 * q + 1] - cur[2 * q - 1]);
+    const s0 = cnt > 1 ? L0 / (cnt - 1) : 0, pts = new Float32Array(2 * cnt), nv = V.length >> 1; pts[0] = ps.x; pts[1] = ps.y;
+    let sg = 0, acc = 0, sl = nv > 1 ? Math.hypot(V[2] - V[0], V[3] - V[1]) : 0;
+    for (let q = 1; q < cnt; q++) {
+      const tg = q * s0;
+      while (sg < nv - 2 && acc + sl < tg) { acc += sl; sg++; sl = Math.hypot(V[2 * sg + 2] - V[2 * sg], V[2 * sg + 3] - V[2 * sg + 1]); }
+      const u = sl > 1e-6 ? Math.min(1, Math.max(0, (tg - acc) / sl)) : 0;
+      pts[2 * q] = V[2 * sg] + (V[2 * sg + 2] - V[2 * sg]) * u; pts[2 * q + 1] = V[2 * sg + 1] + (V[2 * sg + 3] - V[2 * sg + 1]) * u;
+    }
+    return { pts, extra: 0, a: p.a };
   }
   const bi = setInterval(() => { if (inp.b && ST.al) sfx.boost(); }, 140);
 
