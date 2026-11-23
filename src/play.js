@@ -22,7 +22,7 @@ export const CARD_IMGS = [0, 1, 2].map(i => {
 });
 export const ST = { snakes: new Map(), food: [], m: [], l: [], lv: 0 };
 export function resetStore(m) {
-  Object.assign(ST, { fl: {}, hm: 0, tr: m.tr || "stone", you: m.you, names: m.names, sk: m.sk, heads: m.heads, snakes: new Map(), food: [], m: [], l: [], lv: 0, x: 0, y: 0, al: 1, ag: 0, md: m.md, tl: 600, n: 50, lf: m.md === "elim" ? LIVES : -1, hp: 0, shed: [], pw: [], pl: [], hits: [], tails: [], P: null, kl: 0, pb: 2.2, jv: 0, la: performance.now(), lastC: 0, shake: 0, dead: false, drops: 0, tp: 0, te: 0, tm: m.tm || [], tmode: !!m.tmode, ts: null, lead: null, leadT: 0, mx: null, hurOff: 0 });
+  Object.assign(ST, { fl: {}, hm: 0, tr: m.tr || "stone", you: m.you, names: m.names, sk: m.sk, heads: m.heads, snakes: new Map(), food: [], m: [], l: [], lv: 0, x: 0, y: 0, al: 1, ag: 0, md: m.md, tl: 600, n: 50, lf: m.md === "elim" ? LIVES : -1, hp: 0, shed: [], pw: [], pl: [], hits: [], tails: [], P: null, kl: 0, pb: 2.2, jv: 0, la: performance.now(), lastC: 0, shake: 0, dead: false, drops: 0, tp: 0, te: 0, tm: m.tm || [], tmode: !!m.tmode, ts: null, lead: null, leadT: 0, mx: null, hurOff: 0, off: null, rm: null });
 }
 
 export const CHAO = new Image(); CHAO.src = CHAO_URL;
@@ -89,6 +89,7 @@ export function onSnap(m) {
   // e muda de velocidade de leve (ver loop) para absorver oscilação da rede e engasgos do servidor sem congelar
   const arr = performance.now(); ST.jv += (Math.abs(arr - ST.la - TICK) - ST.jv) * .05; ST.la = arr; ST.pb = Math.min(4, 2.2 + ST.jv / 30);
   ST.kl = m.k; if (ST.P == null) ST.P = m.k - ST.pb;
+  { const smp = arr - m.k * TICK; if (ST.off == null || smp < ST.off) ST.off = smp; else ST.off += Math.min(2, (smp - ST.off) * .005); }   // horário "sem atraso extra" do tick 0 no relógio daqui: acompanha o pacote mais rápido (estável mesmo com jitter)
   const seen = new Set();
   for (const [i, c, a, p, sh, iv, tn, sf] of m.ns) {
     seen.add(i); let s = ST.snakes.get(i);
@@ -139,12 +140,13 @@ function teamFlag(g, c, n, hd, r, col, t) {
 // ---- previsão do movimento da própria cobra (esconde o atraso da internet) ----
 // O servidor manda a posição de uma cobra que reflete comandos enviados há ~1 ida e volta (RTT). Aqui refazemos, com as MESMAS regras de giro e velocidade do servidor,
 // o caminho da cabeça desde esse ponto até agora usando os comandos que o jogador deu nesse tempo. Assim a cabeça responde na hora; o servidor continua mandando em tudo (se discordar, a cabeça se corrige).
-const PREDICT = false;   // false = desliga a previsão (volta a mostrar só o que o servidor mandou)
+const PREDICT = true;   // false = desliga a previsão (volta a mostrar só o que o servidor mandou)
 const TD = TICK / 16.667, BIG_FROM = 100, BIG_FULL = 200, BIG_BONUS = .5;   // mesmos valores do servidor (server/game.js)
 export function onPong(m) {   // resposta do ping: mede a ida e volta (suavizada; picos isolados são limitados)
   if (typeof m.c !== "number") return;
   const r = Math.min(800, Math.max(5, performance.now() - m.c));
   ST.rtt = ST.rtt == null ? r : ST.rtt + (Math.min(r, ST.rtt * 1.6 + 40) - ST.rtt) * .15;
+  ST.rm = ST.rm == null || r < ST.rm ? r : ST.rm + (r - ST.rm) * .05;   // ida e volta mínima recente (a previsão usa esta, não a média: assim o jitter não faz a cabeça pular)
 }
 function simStep(p, ta, boost, k, f) {   // um tick do servidor (f = fração do tick)
   const cm = p.cm, r = R(cm), spf = 1 + BIG_BONUS * Math.max(0, Math.min(1, (cm - BIG_FROM) / (BIG_FULL - BIG_FROM)));
@@ -197,8 +199,9 @@ export function runGame(cv, { hud, sc, dd, fin, tail, bn, vg, send }) {
   const inAt = u => { for (let q = inH.length - 1; q >= 0; q--) if (inH[q].t <= u) return inH[q]; return inH[0]; };
   function predictMe(me, now) {
     const mx = ST.mx;
-    if (!PREDICT || !mx || !ST.al || ST.rtt == null || !inH.length || mx.sf || ST.P == null || now - mx.arr > 600 || now < ST.hurOff) { ps = null; return null; }
-    const rtt = Math.min(500, ST.rtt), u0 = mx.arr - rtt, T = Math.max(0, now - u0), p = { x: mx.x, y: mx.y, a: mx.a, cm: mx.cm }, out = [];
+    if (!PREDICT || !mx || !ST.al || ST.rm == null || ST.off == null || !inH.length || mx.sf || ST.P == null || now - mx.arr > 600 || now < ST.hurOff) { ps = null; return null; }
+    const u0 = mx.k * TICK + ST.off - (Math.min(500, ST.rm) + 4), T = Math.min(900, Math.max(0, now - u0)),   // u0: instante do comando que o estado do servidor (tick k) já reflete; ancorado no número do tick, não no horário de chegada do pacote
+      p = { x: mx.x, y: mx.y, a: mx.a, cm: mx.cm }, out = [];
     for (let tt = 0; tt < T;) { const f = Math.min(TICK, T - tt) / TICK; tt += TICK; const e = inAt(u0 + Math.min(tt, T)); simStep(p, e.a, e.b, e.k, f); out.push(p.x, p.y); }
     const last = inH[inH.length - 1], spd = (last.b && mx.cm > .4 ? 8.2 : 4.8) * TD / TICK * (1 + BIG_BONUS * Math.max(0, Math.min(1, (mx.cm - BIG_FROM) / (BIG_FULL - BIG_FROM)))), hz = T + Math.max(0, ST.kl - ST.P) * TICK;
     if (Math.hypot(p.x - me.cur[0], p.y - me.cur[1]) > spd * hz * 1.4 + 120) { ps = null; return null; }   // longe demais do que o servidor mostra (renasceu, foi levada...): não prevê

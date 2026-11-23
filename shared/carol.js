@@ -2,7 +2,7 @@
 // MODO TESTE: TEST = true faz aparecerem N_TEST Carols logo no começo de TODA partida. Para o jogo normal troque para false (1 Carol, aparece entre APPEAR[0] e APPEAR[1] segundos)
 import { NS } from "./config.js";
 export const CAROL = {
-  TEST: true, N: 1, N_TEST: 4,
+  TEST: false, N: 1, N_TEST: 4,
   NAME: "MC Carol",
   SKIN: 16,                  // posição dela na lista de corpos (pelecarol.png)
   APPEAR: [90, 420],         // aparece num momento sorteado entre 1:30 e 7:00 da partida (s)
